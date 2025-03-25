@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Test Page</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    // Mock data for testing
+    window.mockData = {
+      user: {
+        id: "1",
+        email: "user@example.com",
+        name: "Test User",
+        role: "admin",
+        lastLogin: "2025-03-01T12:00:00Z",
+        preferences: { theme: "light" },
+        isActive: true,
+        createdAt: "2025-01-01T00:00:00Z"
+      },
+      stats: {
+        channelCount: 5,
+        widgetCount: 12,
+        videoCount: 87,
+        totalQueries: 2453,
+        recentActivity: [
+          { timestamp: "2025-03-01T14:23:00Z", action: "Widget Created", details: "Product FAQ Widget" },
+          { timestamp: "2025-03-01T12:15:00Z", action: "Channel Added", details: "My Tech Channel" },
+          { timestamp: "2025-02-28T18:45:00Z", action: "Query Received", details: "How to install the widget?" },
+          { timestamp: "2025-02-28T09:20:00Z", action: "Video Processed", details: "Introduction to RAG" }
+        ]
+      },
+      channels: [
+        { id: "c1", name: "My Tech Channel", description: "Technology tutorials and reviews", userId: "1", config: {}, status: "active", createdAt: "2025-02-15T00:00:00Z", updatedAt: "2025-03-01T12:15:00Z" },
+        { id: "c2", name: "Cooking with Joe", description: "Cooking and food recipes", userId: "1", config: {}, status: "processing", createdAt: "2025-02-28T00:00:00Z", updatedAt: "2025-02-28T00:00:00Z" }
+      ],
+      widgets: [
+        { id: "w1", name: "Tech Support Widget", channelId: "c1", config: {}, status: "active", createdAt: "2025-02-16T00:00:00Z", updatedAt: "2025-02-16T00:00:00Z" },
+        { id: "w2", name: "Product FAQ Widget", channelId: "c1", config: {}, status: "active", createdAt: "2025-03-01T14:23:00Z", updatedAt: "2025-03-01T14:23:00Z" },
+        { id: "w3", name: "Recipe Assistant", channelId: "c2", config: {}, status: "draft", createdAt: "2025-02-28T12:00:00Z", updatedAt: "2025-02-28T12:00:00Z" }
+      ]
+    };
+
+    // Mock API endpoints
+    const originalFetch = window.fetch;
+    window.fetch = function(url, options) {
+      if (url === '/api/auth/check') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { isAuthenticated: true, user: window.mockData.user } })
+        });
+      }
+      
+      if (url === '/api/auth/profile') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { user: window.mockData.user } })
+        });
+      }
+      
+      if (url === '/api/dashboard/stats') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: window.mockData.stats })
+        });
+      }
+      
+      if (url === '/api/dashboard/channels') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { channels: window.mockData.channels } })
+        });
+      }
+      
+      if (url === '/api/dashboard/widgets') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { widgets: window.mockData.widgets } })
+        });
+      }
+      
+      // Pass through for other requests
+      return originalFetch(url, options);
+    };
+  </script>
+  <script src="/js/bundle.js"></script>
+</body>
+</html>

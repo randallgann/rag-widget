@@ -1,0 +1,120 @@
+# admin-portal.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-portal
+spec:
+  selector:
+    matchLabels:
+      app: admin-portal
+  template:
+    metadata:
+      labels:
+        app: admin-portal
+    spec:
+      initContainers:
+      - name: check-db-ready
+        image: postgres:13-alpine
+        command: ['sh', '-c', 
+          'until pg_isready -h postgres -U postgres; do echo "Waiting for postgres..."; sleep 2; done;']
+      containers:
+      - name: admin-portal
+        image: rag-widget-admin-portal:latest  # Local image
+        imagePullPolicy: Never
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Waiting for PostgreSQL to be fully initialized..."
+            sleep 20
+            node dist/app.js
+        ports:
+        - containerPort: 3000
+        env:
+        - name: PORT
+          value: "3000"
+        - name: NODE_ENV
+          value: "development"
+        - name: LOG_LEVEL
+          value: "debug"
+        - name: DB_HOST
+          value: "postgres"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        - name: DB_NAME
+          value: "youtube_rag"
+        - name: AUTH0_DOMAIN
+          valueFrom:
+            secretKeyRef:
+              name: auth0-secret
+              key: AUTH0_DOMAIN
+        - name: AUTH0_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: auth0-secret
+              key: AUTH0_CLIENT_ID
+        - name: AUTH0_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: auth0-secret
+              key: AUTH0_CLIENT_SECRET
+        - name: AUTH0_CALLBACK_URL
+          valueFrom:
+            secretKeyRef:
+              name: auth0-secret
+              key: AUTH0_CALLBACK_URL
+        - name: AUTH0_AUDIENCE
+          valueFrom:
+            secretKeyRef:
+              name: auth0-secret
+              key: AUTH0_AUDIENCE
+        # GCP Configuration
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/var/secrets/google/gcp-sa-key.json"
+        - name: GCP_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: gcp-config
+              key: GCP_PROJECT_ID
+        - name: GCP_PUBSUB_TOPIC
+          valueFrom:
+            configMapKeyRef:
+              name: gcp-config
+              key: GCP_PUBSUB_TOPIC
+        - name: GCP_STORAGE_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: gcp-config
+              key: GCP_STORAGE_BUCKET
+        volumeMounts:
+        - name: gcp-key-volume
+          mountPath: "/var/secrets/google"
+          readOnly: true
+      volumes:
+      - name: gcp-key-volume
+        secret:
+          secretName: gcp-secrets
+          items:
+          - key: gcp-sa-key.json
+            path: gcp-sa-key.json
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-portal
+spec:
+  type: LoadBalancer
+  selector:
+    app: admin-portal
+  ports:
+  - port: 3000
+    targetPort: 3000
