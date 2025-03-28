@@ -10,7 +10,16 @@ Each entry should include:
 
 ## Changes
 
-### 2025-03-28 (Video Processing and Development Environment Fixes)
+### 2025-03-28 (Video Processing Status Tracking & Environment Fixes)
+- **Implemented Video Processing Status Tracking**:
+  - Added `videoProcStatusSubscriber` service to receive real-time status updates from processing cluster
+  - Enhanced database schema with new fields (`processing_stage` and `processing_last_updated`)
+  - Added detailed video status endpoint at `/api/videos/:id/status-detailed`
+  - Updated existing status endpoints to include additional status fields
+  - Implemented time remaining estimation based on processing progress
+  - Added automatic subscription management for Pub/Sub status updates
+  - Enhanced Video model with additional processing status data
+
 - **Fixed Video Processing Errors**:
   - Fixed "WHERE parameter 'id' has invalid 'undefined' value" error during video processing by correcting parameter name mismatch
   - Changed `channelId` to `id` in `processChannelVideos` function to match route parameter naming

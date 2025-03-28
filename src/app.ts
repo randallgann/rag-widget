@@ -11,6 +11,7 @@ import { errorHandler } from './api/middlewares/errorHandler';
 import { testDbConnection } from './config/db';
 import sequelize from './config/db';
 import fs from 'fs';
+import { videoProcStatusSubscriber } from './services/processing/videoProcStatusSubscriber';
 
 // Initialize GCP environment for authentication
 try {
@@ -141,12 +142,21 @@ Object.values(models).forEach(model => {
 if (process.env.NODE_ENV !== 'test') {
   // Test database connection before starting server - no migrations needed as init.sql handles table creation
   testDbConnection()
-    .then(() => {
+    .then(async () => {
       // Start the server after successful database connection
       app.listen(PORT, () => {
         logger.info(`Server running on port ${PORT}`);
         logger.info(`Auth routes enabled - Auth0 integration active`);
       });
+      
+      // Start the video processing status subscriber
+      try {
+        await videoProcStatusSubscriber.start();
+        logger.info('Video processing status subscriber started');
+      } catch (error) {
+        logger.error('Failed to start video processing status subscriber:', error);
+        // Continue application execution even if subscriber fails
+      }
     })
     .catch(err => {
       // Log the error but continue in development mode
