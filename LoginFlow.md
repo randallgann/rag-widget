@@ -6,7 +6,7 @@ This document describes the authentication flow from the test-landing-page throu
 
 The authentication system uses Auth0 for identity management with a two-part architecture:
 1. **test-landing-page**: Public-facing landing page with login/signup buttons
-2. **rag-widget**: Admin portal application that handles authentication directly using PKCE
+2. **api-service**: Consolidated backend service that handles authentication and dashboard functionality using PKCE
 
 ## Authentication Flow Diagram
 
@@ -14,21 +14,21 @@ The authentication system uses Auth0 for identity management with a two-part arc
 sequenceDiagram
     actor User
     participant Landing as test-landing-page
-    participant RAG as rag-widget application
+    participant API as api-service
     participant Auth0
     
     User->>Landing: Visits landing page
     User->>Landing: Clicks Login/Signup button
-    Landing->>RAG: Redirects to rag-widget's /api/auth/login
-    RAG->>RAG: Generates PKCE code verifier & challenge
-    RAG->>Auth0: Redirects to Auth0 with PKCE parameters
+    Landing->>API: Redirects to /api/auth/login
+    API->>API: Generates PKCE code verifier & challenge
+    API->>Auth0: Redirects to Auth0 with PKCE parameters
     Auth0->>User: Presents login form
     User->>Auth0: Enters credentials
-    Auth0->>RAG: Callback with authorization code
-    RAG->>Auth0: Exchanges code for tokens using PKCE
-    RAG->>RAG: Stores tokens in HttpOnly cookies
-    RAG->>RAG: Creates session with state token
-    RAG->>User: Redirects to dashboard
+    Auth0->>API: Callback with authorization code
+    API->>Auth0: Exchanges code for tokens using PKCE
+    API->>API: Stores tokens in HttpOnly cookies
+    API->>API: Creates session with state token
+    API->>User: Redirects to dashboard
 ```
 
 ## Detailed Flow

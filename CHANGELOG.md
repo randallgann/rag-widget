@@ -10,6 +10,19 @@ Each entry should include:
 
 ## Changes
 
+### 2025-03-27 (Service Consolidation)
+- **Consolidated Architecture**:
+  - Merged auth-server and admin-portal services into a single api-service
+  - Simplified deployment by reducing from 3 to 2 services (api-service + frontend)
+  - Standardized on port 3001 for all backend operations
+  - Removed duplicate configuration and dependencies
+  - Updated Docker Compose configuration with consolidated service
+  - Updated Kubernetes manifests to reflect new architecture
+  - Refactored build scripts for consolidated image building
+  - Created comprehensive documentation of the new architecture
+  - Added ServiceConsolidationPlan.md with implementation details
+  - Updated all environment variable references to use the new service
+
 ### 2025-03-21 (Kubernetes Deployment Improvements)
 - **Enhanced Kubernetes Deployment Configuration**:
   - Fixed port mismatch in frontend service (changed containerPort from 3003 to 80 and service port configuration)

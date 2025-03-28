@@ -21,7 +21,7 @@ spec:
         - containerPort: 80
         env:
         - name: API_URL
-          value: "http://auth-server:3001"  # Use the K8s service name
+          value: "http://api-service:3001"  # Use the K8s service name
         - name: AUTH0_SECRET
           valueFrom:
             secretKeyRef:

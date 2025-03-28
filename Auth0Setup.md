@@ -17,9 +17,9 @@ This guide explains how to set up and test Auth0 authentication with your RAG Wi
 
 3. **Configure Application Settings:**
    - In your application settings, configure these URLs:
-     - Allowed Callback URLs: `http://localhost:3000/api/auth/callback`
-     - Allowed Logout URLs: `http://localhost:3000`
-     - Allowed Web Origins: `http://localhost:3000`
+     - Allowed Callback URLs: `http://localhost:3001/api/auth/callback`
+     - Allowed Logout URLs: `http://localhost:3001`
+     - Allowed Web Origins: `http://localhost:3001`
    - For production, add your production URLs as well
    - Scroll down and click "Save Changes"
 
@@ -84,7 +84,7 @@ You have several options for test users:
       // Replace these values with your Auth0 credentials
       const domain = 'YOUR_AUTH0_DOMAIN';
       const clientId = 'YOUR_CLIENT_ID';
-      const redirectUri = 'http://localhost:3000/api/auth/callback';
+      const redirectUri = 'http://localhost:3001/api/auth/callback';
       
       // Generate a random state value for security
       const state = Math.random().toString(36).substring(2);

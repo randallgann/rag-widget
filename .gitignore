@@ -60,3 +60,4 @@ temp/
 .stylelintcache
 .env.example
 scripts/set-auth0-env.sh
+scripts/set-local-env.sh

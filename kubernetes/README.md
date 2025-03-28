@@ -7,10 +7,9 @@ This directory contains Kubernetes configuration files for deploying the RAG Wid
 The application consists of the following components:
 
 1. **postgres.yml** - PostgreSQL database
-2. **admin-portal.yml** - Admin portal UI and API
-3. **auth-server.yml** - Authentication server
-4. **landing-page.yml** - Public landing page
-5. **gcp-secrets.yml** - GCP authentication configuration
+2. **api-service.yml** - Consolidated API service (handles both authentication and admin portal functionality)
+3. **frontend.yml** - Public landing page
+4. **gcp-secrets.yml** - GCP authentication configuration
 
 ## GCP Authentication
 
@@ -32,9 +31,8 @@ kubectl apply -f kubernetes/gcp-secrets-with-key.yml
 
 ```bash
 kubectl apply -f kubernetes/postgres.yml
-kubectl apply -f kubernetes/auth-server.yml
-kubectl apply -f kubernetes/admin-portal.yml
-kubectl apply -f kubernetes/landing-page.yml
+kubectl apply -f kubernetes/api-service.yml
+kubectl apply -f kubernetes/frontend.yml
 ```
 
 ### 3. Access the Application
