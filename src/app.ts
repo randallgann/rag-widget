@@ -49,7 +49,7 @@ import videoRoutes from './api/routes/videoRoutes';
 import proxyRoutes from './api/routes/proxyRoutes';
 
 const app: Application = express();
-const PORT = config.port || 3000;
+const PORT = config.port || 3001;
 
 // Middleware
 app.use(session({

@@ -48,7 +48,7 @@
    - `AUTH0_CLIENT_ID` - Auth0 client ID
    - `AUTH0_DOMAIN` - Auth0 domain
    - `AUTH0_CLIENT_SECRET` - Auth0 client secret
-   - `ADMIN_PORTAL_URL` - URL to admin portal (default: http://localhost:3000)
+   - `ADMIN_PORTAL_URL` - URL to admin portal (default: http://localhost:3001)
    - `REACT_APP_URL` - URL to landing page (default: http://localhost:3003)
 
 4. **Database Setup**

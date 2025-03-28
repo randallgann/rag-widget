@@ -34,9 +34,8 @@ Deploy the application components with the GCP authentication configured:
 
 ```bash
 kubectl apply -f kubernetes/postgres.yml
-kubectl apply -f kubernetes/admin-portal.yml
-kubectl apply -f kubernetes/auth-server.yml
-kubectl apply -f kubernetes/landing-page.yml
+kubectl apply -f kubernetes/api-service.yml
+kubectl apply -f kubernetes/frontend.yml
 ```
 
 ## How it Works

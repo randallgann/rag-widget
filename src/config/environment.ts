@@ -61,7 +61,7 @@ export const config: Config = {
     secret: process.env.SESSION_KEY || 'your_session_key'
   },
   nodeEnv: process.env.NODE_ENV || 'development',
-  port: parseInt(process.env.PORT || '3000', 10),
+  port: parseInt(process.env.PORT || '3001', 10),
   logLevel: process.env.LOG_LEVEL || 'info',
   database: {
     host: process.env.DB_HOST || 'localhost',
@@ -78,7 +78,7 @@ export const config: Config = {
       clientId: process.env.AUTH0_CLIENT_ID || '',
       clientSecret: process.env.AUTH0_CLIENT_SECRET || '',
       audience: process.env.AUTH0_AUDIENCE || '',
-      callbackUrl: process.env.AUTH0_CALLBACK_URL || 'http://localhost:3000/api/auth/callback',
+      callbackUrl: process.env.AUTH0_CALLBACK_URL || 'http://localhost:3001/api/auth/callback',
     },
   },
   youtube: {

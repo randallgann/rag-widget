@@ -9,7 +9,7 @@ This document tracks issues encountered during development and their resolutions
 **Issue:** After successful authentication with Auth0, API requests to dashboard endpoints like `/api/dashboard/stats` return 401 Unauthorized errors:
 
 ```
-GET http://localhost:3000/api/dashboard/stats 401 (Unauthorized)
+GET http://localhost:3001/api/dashboard/stats 401 (Unauthorized)
 ```
 
 **Root Cause:**

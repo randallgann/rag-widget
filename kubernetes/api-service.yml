@@ -1,16 +1,17 @@
-# admin-portal.yaml
+# api-service.yaml (consolidated auth-server and admin-portal)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: admin-portal
+  name: api-service
 spec:
+  replicas: 1
   selector:
     matchLabels:
-      app: admin-portal
+      app: api-service
   template:
     metadata:
       labels:
-        app: admin-portal
+        app: api-service
     spec:
       initContainers:
       - name: check-db-ready
@@ -18,8 +19,8 @@ spec:
         command: ['sh', '-c', 
           'until pg_isready -h postgres -U postgres; do echo "Waiting for postgres..."; sleep 2; done;']
       containers:
-      - name: admin-portal
-        image: rag-widget-admin-portal:latest  # Local image
+      - name: api-service
+        image: rag-widget-api-service:latest  # Local image
         imagePullPolicy: Never
         command: ["/bin/sh", "-c"]
         args:
@@ -28,10 +29,10 @@ spec:
             sleep 20
             node dist/app.js
         ports:
-        - containerPort: 3000
+        - containerPort: 3001
         env:
         - name: PORT
-          value: "3000"
+          value: "3001"
         - name: NODE_ENV
           value: "development"
         - name: LOG_LEVEL
@@ -77,6 +78,20 @@ spec:
             secretKeyRef:
               name: auth0-secret
               key: AUTH0_AUDIENCE
+        - name: SESSION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: auth0-secret
+              key: SESSION_KEY
+        - name: FRONTEND_URL
+          value: "http://127.0.0.1:3003"
+        - name: API_SERVICE_URL
+          value: "http://127.0.0.1:3001"
+        - name: YOUTUBE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-keys-secret
+              key: YOUTUBE_API_KEY
         # GCP Configuration
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: "/var/secrets/google/gcp-sa-key.json"
@@ -110,11 +125,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: admin-portal
+  name: api-service
 spec:
-  type: LoadBalancer
+  type: LoadBalancer  # Or ClusterIP if you'll access through Ingress
   selector:
-    app: admin-portal
+    app: api-service
   ports:
-  - port: 3000
-    targetPort: 3000
+  - port: 3001
+    targetPort: 3001

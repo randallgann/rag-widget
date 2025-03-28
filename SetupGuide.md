@@ -58,7 +58,7 @@ npm run dev
 yarn dev
 ```
 
-The server will start on http://localhost:3000 (or the port specified in your .env file).
+The server will start on http://localhost:3001 (or the port specified in your .env file).
 
 ## Project Structure
 

@@ -13,19 +13,22 @@ The YouTube RAG Widget is a Software-as-a-Service (SaaS) application that enable
 1. **Landing Page** (`/test-landing-page`)
    - Public-facing website for user signup/login
    - Authentication gateway using Auth0
-   - Redirects to Admin Portal after successful authentication
+   - Redirects to API Service after successful authentication
 
-2. **Admin Portal** (`/rag-widget`)
-   - Dashboard for content creators to manage channels and widgets
-   - Configuration interface for embedding settings
-   - Analytics and usage statistics
+2. **API Service** (`/rag-widget`)
+   - Consolidated backend service handling both authentication and admin functionality
+   - Serves the admin dashboard UI
+   - Provides RESTful API endpoints for all functionality
+   - Manages database interactions and business logic
+   - Handles YouTube data processing and vector operations
 
 3. **Widget** (`/rag-widget/public/widget`)
    - Embeddable JavaScript component for third-party websites
    - Provides Q&A interface for end users
-   - Communicates with backend API for query processing
+   - Communicates with API Service for query processing
 
-4. **Backend Services**
+4. **Backend Functionality**
+   - Authentication and user management
    - YouTube data fetching and processing
    - Transcription services
    - Embedding generation
@@ -67,12 +70,13 @@ The YouTube RAG Widget is a Software-as-a-Service (SaaS) application that enable
 sequenceDiagram
     User->>Landing Page: Visits landing page
     User->>Landing Page: Clicks Login
-    Landing Page->>Auth Server: Redirects to /login
-    Auth Server->>Auth0: Redirects to Auth0 login
-    Auth0->>Auth Server: Callback with authorization code
-    Auth Server->>Auth0: Exchanges code for tokens
-    Auth Server->>Admin Portal: Redirects with tokens
-    Admin Portal->>Backend API: Authenticated requests with tokens
+    Landing Page->>API Service: Redirects to /api/auth/login
+    API Service->>Auth0: Redirects to Auth0 login
+    Auth0->>API Service: Callback with authorization code
+    API Service->>Auth0: Exchanges code for tokens
+    API Service->>Dashboard: Redirects to dashboard with state token
+    Dashboard->>API Service: Exchanges state token for access token
+    Dashboard->>API Service: Makes authenticated API requests
 ```
 
 ## Data Flow
@@ -100,19 +104,17 @@ sequenceDiagram
 
 | Component | Exposes | Consumes |
 |-----------|---------|----------|
-| Landing Page | User authentication UI | Auth Server API |
-| Auth Server | Authentication API | Auth0 Service |
-| Admin Portal | Dashboard UI | Backend API |
-| Widget | Embeddable script | Query API |
-| Backend API | RESTful endpoints | YouTube, Vector DB, Auth services |
+| Landing Page | User authentication UI | API Service |
+| API Service | Authentication & Data APIs | Auth0, YouTube, Vector DB services, PostgreSQL |
+| Widget | Embeddable script | API Service |
+| PostgreSQL | Structured data storage | API Service queries |
 
 ## Deployment Architecture
 
-For production deployment, the system uses containerized microservices orchestrated with Docker:
+For production deployment, the system uses containerized services orchestrated with Docker:
 
-- Frontend containers (Landing Page, Admin Portal)
-- Backend API container
-- Auth Server container
+- Frontend container (Landing Page)
+- API Service container (consolidated backend)
 - Database containers (PostgreSQL, Vector DB)
 
 ## Security Considerations

@@ -5,14 +5,12 @@
 As of March 21, 2025, our Kubernetes deployment in Minikube consists of:
 
 - **Running Pods**:
-  - `admin-portal-57f8694948-xq6zj` (Status: Running)
-  - `auth-server-55bd54f577-6sm5b` (Status: Running)
+  - `api-service-57f8694948-xq6zj` (Status: Running)
   - `frontend-7584dc57bc-bffsx` (Status: Running)
   - `postgres-5748b759b6-q5mlb` (Status: Running)
 
 - **Services**:
-  - `admin-portal` - LoadBalancer - ClusterIP: 10.97.191.4 - NodePort: 31007
-  - `auth-server` - LoadBalancer - ClusterIP: 10.97.157.156 - NodePort: 32740
+  - `api-service` - LoadBalancer - ClusterIP: 10.97.157.156 - NodePort: 32740
   - `frontend` - LoadBalancer - ClusterIP: 10.110.144.87 - NodePort: 31169
   - `postgres` - ClusterIP - ClusterIP: 10.98.211.254
 
@@ -109,29 +107,33 @@ For help and more options:
 ./scripts/setup-auth0-secrets.sh --help
 ```
 
-3. Apply Kubernetes resources:
+3. Set up API Keys Secret:
 ```bash
-kubectl apply -f kubernetes/postgres.yml
-kubectl apply -f kubernetes/auth-server.yml
-kubectl apply -f kubernetes/admin-portal.yml
-kubectl apply -f kubernetes/landing-page.yml
+# Set your YouTube API key
+export YOUTUBE_API_KEY=your-youtube-api-key
+
+# Create and apply the API keys secret
+./scripts/setup-api-keys.sh
 ```
 
-4. Port forwarding for accessing services:
+4. Apply Kubernetes resources:
 ```bash
-# For admin portal
-kubectl port-forward service/admin-portal 3000:3000
+kubectl apply -f kubernetes/postgres.yml
+kubectl apply -f kubernetes/api-service.yml
+kubectl apply -f kubernetes/frontend.yml
+```
 
-# For auth server
-kubectl port-forward service/auth-server 3001:3001
+5. Port forwarding for accessing services:
+```bash
+# For API service
+kubectl port-forward service/api-service 3001:3001
 
 # For frontend/landing page
 kubectl port-forward service/frontend 3003:3003
 ```
 
 ## Access URLs
-- Admin Portal: http://localhost:3000
-- Auth Server: http://localhost:3001
+- API Service: http://localhost:3001
 - Landing Page: http://localhost:3003
 
 ## Applying Changes to Existing Cluster
@@ -141,17 +143,15 @@ If you've made changes to your Kubernetes configuration files, you don't need to
 1. Apply the updated configurations:
 ```bash
 kubectl apply -f kubernetes/postgres.yml
-kubectl apply -f kubernetes/auth-server.yml
-kubectl apply -f kubernetes/admin-portal.yml
-kubectl apply -f kubernetes/landing-page.yml
+kubectl apply -f kubernetes/api-service.yml
+kubectl apply -f kubernetes/frontend.yml
 ```
 
 Kubernetes will detect the differences between the current state and the desired state in the updated YAML files and will perform a rolling update of the affected resources.
 
 2. (Optional) Force an immediate redeployment:
 ```bash
-kubectl rollout restart deployment/auth-server
-kubectl rollout restart deployment/admin-portal
+kubectl rollout restart deployment/api-service
 kubectl rollout restart deployment/frontend
 kubectl rollout restart deployment/postgres
 ```
@@ -219,8 +219,7 @@ If pods can't start because they can't pull the images:
 
 #### 6. minikube urls
 For specific services mentioned in the docs:
-- minikube service admin-portal --url
-- minikube service auth-server --url
+- minikube service api-service --url
 - minikube service frontend --url
 
 #### 7. Then update the deployment

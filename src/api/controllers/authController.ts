@@ -48,8 +48,8 @@ declare module "express-session" {
   }
 }
 
-// Frontend URL for redirecting after authentication
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+// API service URL for redirecting after authentication
+const apiServiceUrl = process.env.API_SERVICE_URL || 'http://localhost:3001';
 
 /**
  * Initialize login flow with PKCE
@@ -221,8 +221,8 @@ export const handleCallback = async (req: Request, res: Response, next: NextFunc
         logger.debug('Session saved successfully');
       }
       
-      // Redirect to admin portal with state token (always redirect to dashboard)
-      const redirectUrl = `${frontendUrl}/dashboard?state_token=${stateToken}`;
+      // Redirect to the dashboard with state token
+      const redirectUrl = `${apiServiceUrl}/dashboard?state_token=${stateToken}`;
       logger.info('Redirecting to', { url: redirectUrl });
       res.redirect(redirectUrl);
     });
