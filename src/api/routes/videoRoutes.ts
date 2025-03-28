@@ -5,7 +5,8 @@ import {
   updateBatchVideoSelection,
   processChannelVideos,
   getVideoProcessingStatus,
-  getBatchVideoProcessingStatus
+  getBatchVideoProcessingStatus,
+  getDetailedVideoProcessingStatus
 } from '../controllers/videoController';
 
 const router = Router();
@@ -44,5 +45,12 @@ router.get('/:id/status', validateAuth0Token, requireAuth, getVideoProcessingSta
  * @access  Private
  */
 router.post('/status-batch', validateAuth0Token, requireAuth, getBatchVideoProcessingStatus);
+
+/**
+ * @route   GET /api/videos/:id/status-detailed
+ * @desc    Get detailed processing status for a video
+ * @access  Private
+ */
+router.get('/:id/status-detailed', validateAuth0Token, requireAuth, getDetailedVideoProcessingStatus);
 
 export default router;

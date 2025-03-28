@@ -45,6 +45,7 @@ interface Config {
     projectId: string;
     pubsub: {
       videoProcessingTopic: string;
+      videoProcessingStatusTopic: string;
     };
     storage: {
       bucket: string;
@@ -97,6 +98,7 @@ export const config: Config = {
     projectId: process.env.GCP_PROJECT_ID || 'rag-widget',
     pubsub: {
       videoProcessingTopic: process.env.GCP_PUBSUB_TOPIC || 'video-processing-queue',
+      videoProcessingStatusTopic: process.env.GCP_PUBSUB_STATUS_TOPIC || 'video-processing-status',
     },
     storage: {
       bucket: process.env.GCP_STORAGE_BUCKET || 'rag-widget-processed-videos',

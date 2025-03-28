@@ -178,7 +178,9 @@ export const getVideoProcessingStatus = async (req: Request, res: Response, next
           title: video.title,
           processingStatus: video.processingStatus,
           processingProgress: video.processingProgress,
-          processingError: video.processingError
+          processingError: video.processingError,
+          processingStage: video.processingStage,
+          processingLastUpdated: video.processingLastUpdated
         }
       }
     });
@@ -225,7 +227,7 @@ export const getBatchVideoProcessingStatus = async (req: Request, res: Response,
         id: videoIds,
         channelId: userChannelIds
       },
-      attributes: ['id', 'title', 'processingStatus', 'processingProgress', 'processingError']
+      attributes: ['id', 'title', 'processingStatus', 'processingProgress', 'processingError', 'processingStage', 'processingLastUpdated']
     });
     
     return res.status(200).json({
@@ -238,6 +240,90 @@ export const getBatchVideoProcessingStatus = async (req: Request, res: Response,
     });
   } catch (error) {
     logger.error('Batch get video processing status error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get detailed processing status for a video
+ * @route GET /api/videos/:id/status-detailed
+ */
+export const getDetailedVideoProcessingStatus = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || !req.user.userId) {
+      throw new AppError('Unauthorized', 401);
+    }
+    
+    const { id } = req.params;
+    
+    // Get user from our database
+    const user = await userService.getUserByAuth0Id(req.user.userId);
+    
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+    
+    // Find the video with additional status fields
+    const video = await Video.findByPk(id, {
+      include: [{
+        model: Channel,
+        as: 'channel',
+        attributes: ['id', 'userId'],
+      }],
+      attributes: [
+        'id', 
+        'title',
+        'processingStatus',
+        'processingProgress',
+        'processingStage',
+        'processingError',
+        'processingLastUpdated'
+      ]
+    });
+    
+    if (!video) {
+      throw new AppError('Video not found', 404);
+    }
+    
+    // Check if the video belongs to a channel owned by the user
+    if (!video.channel || video.channel.userId !== user.id) {
+      throw new AppError('You do not have permission to access this video', 403);
+    }
+    
+    // Calculate estimated time remaining (if applicable)
+    let estimatedTimeRemaining = null;
+    if (video.processingStatus === 'processing' && 
+        video.processingProgress > 0 && 
+        video.processingProgress < 100 && 
+        video.processingLastUpdated) {
+      
+      const elapsedTime = Date.now() - video.processingLastUpdated.getTime();
+      const progressPerMs = video.processingProgress / elapsedTime;
+      const remainingProgress = 100 - video.processingProgress;
+      
+      if (progressPerMs > 0) {
+        const estimatedMs = remainingProgress / progressPerMs;
+        estimatedTimeRemaining = Math.round(estimatedMs / 1000); // Convert to seconds
+      }
+    }
+    
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        video: {
+          id: video.id,
+          title: video.title,
+          processingStatus: video.processingStatus,
+          processingProgress: video.processingProgress,
+          processingStage: video.processingStage,
+          processingError: video.processingError,
+          processingLastUpdated: video.processingLastUpdated,
+          estimatedTimeRemaining
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Get detailed video processing status error:', error);
     next(error);
   }
 };

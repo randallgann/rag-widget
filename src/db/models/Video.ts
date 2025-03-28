@@ -19,6 +19,8 @@ export interface VideoAttributes {
   selectedForProcessing?: boolean;
   processingProgress?: number;
   processingError?: string | null;
+  processingStage?: string;
+  processingLastUpdated?: Date;
   status: 'active' | 'inactive' | 'pending';
   processingStatus: 'pending' | 'processing' | 'completed' | 'failed';
   createdAt: Date;
@@ -31,7 +33,7 @@ export interface VideoAttributes {
 export interface VideoCreationAttributes extends Optional<VideoAttributes, 
   'id' | 'createdAt' | 'updatedAt' | 'title' | 'description' | 'thumbnailUrl' | 
   'duration' | 'durationSeconds' | 'viewCount' | 'likeCount' | 'publishedAt' | 
-  'selectedForProcessing' | 'processingProgress' | 'processingError'> {}
+  'selectedForProcessing' | 'processingProgress' | 'processingError' | 'processingStage' | 'processingLastUpdated'> {}
 
 class Video extends Model<VideoAttributes, VideoCreationAttributes> implements VideoAttributes {
   public id!: string;
@@ -48,6 +50,8 @@ class Video extends Model<VideoAttributes, VideoCreationAttributes> implements V
   public selectedForProcessing!: boolean;
   public processingProgress!: number;
   public processingError!: string | null;
+  public processingStage!: string;
+  public processingLastUpdated!: Date;
   public status!: 'active' | 'inactive' | 'pending';
   public processingStatus!: 'pending' | 'processing' | 'completed' | 'failed';
   public createdAt!: Date;
@@ -138,6 +142,16 @@ Video.init(
       type: DataTypes.TEXT,
       allowNull: true,
       field: 'processing_error'
+    },
+    processingStage: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      field: 'processing_stage'
+    },
+    processingLastUpdated: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'processing_last_updated'
     },
     status: {
       type: DataTypes.ENUM('active', 'inactive', 'pending'),

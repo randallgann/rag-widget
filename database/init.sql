@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS videos (
     selected_for_processing BOOLEAN DEFAULT FALSE,
     processing_progress FLOAT DEFAULT 0,
     processing_error TEXT,
+    processing_stage VARCHAR(100),
+    processing_last_updated TIMESTAMP WITH TIME ZONE,
     status status_enum DEFAULT 'active',
     processing_status processing_status_enum DEFAULT 'pending',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
