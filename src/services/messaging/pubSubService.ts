@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { config } from '../../config/environment';
 import { logger } from '../../config/logger';
 import { secretManagerService } from '../gcp/secretManagerService';
+import fs from 'fs';
 
 /**
  * Service for interacting with Google Cloud Pub/Sub
@@ -34,7 +35,16 @@ export class PubSubService {
 
       // In Kubernetes, we'll use the mounted service account key via GOOGLE_APPLICATION_CREDENTIALS 
       // environment variable. The PubSub client will automatically use it.
-      logger.info('Using application default credentials from GOOGLE_APPLICATION_CREDENTIALS');
+      // Log the authentication method being used
+      if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        logger.info(`Using credentials from GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
+        // Check if the credentials file exists
+        if (!fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+          logger.error(`Credentials file does not exist at path: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
+        }
+      } else {
+        logger.warn('GOOGLE_APPLICATION_CREDENTIALS not set, using application default credentials');
+      }
       
       // The following code is kept for backwards compatibility with non-Kubernetes environments
       if (config.gcp.secretManager.enabled && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {

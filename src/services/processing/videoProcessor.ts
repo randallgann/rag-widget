@@ -30,9 +30,13 @@ export class VideoProcessorService {
         include: [{
           model: Channel,
           as: 'channel',
-          attributes: ['id', 'userId', 'name']
+          attributes: ['id', 'userId', 'name'],
+          required: true // Ensure only videos with valid channel associations are returned
         }]
       });
+      
+      // Log the video IDs that were successfully found
+      logger.info(`Found ${videos.length} videos with valid channel associations out of ${validVideoIds.length} requested IDs`);
       
       if (videos.length === 0) {
         logger.warn('No videos found for the provided IDs');
@@ -52,10 +56,13 @@ export class VideoProcessorService {
           // Create video URL from ID
           const videoUrl = `https://www.youtube.com/watch?v=${video.youtubeId}`;
           
+          // Log the values being used for processing
+          logger.info(`Processing video - ID: ${video.id}, YouTube ID: ${video.youtubeId}, Channel ID: ${video.channel.id}, User ID: ${video.channel.userId}`);
+          
           // Publish message to Pub/Sub
           await pubSubService.publishVideoProcessingMessage({
             video: {
-              id: video.youtubeId,
+              id: video.id, // Use the database ID instead of youtubeId
               url: videoUrl,
               title: video.title,
               duration: video.duration
