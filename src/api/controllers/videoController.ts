@@ -252,8 +252,13 @@ export const processChannelVideos = async (req: Request, res: Response, next: Ne
       throw new AppError('Unauthorized', 401);
     }
     
-    const { channelId } = req.params;
+    // Extract channel ID from route params
+    // The parameter is named 'id' in the routes (:id/process), not 'channelId'
+    const { id } = req.params;
     const { videoIds } = req.body;
+    
+    // Log the channel ID for debugging
+    logger.info(`Processing videos for channel ID: ${id}`);
     
     // Get user from our database
     const user = await userService.getUserByAuth0Id(req.user.userId);
@@ -265,7 +270,7 @@ export const processChannelVideos = async (req: Request, res: Response, next: Ne
     // Check if the channel belongs to the user
     const channel = await Channel.findOne({
       where: { 
-        id: channelId,
+        id,
         userId: user.id
       }
     });
@@ -281,13 +286,13 @@ export const processChannelVideos = async (req: Request, res: Response, next: Ne
       videos = await Video.findAll({
         where: {
           id: videoIds,
-          channelId: channelId
+          channelId: id
         }
       });
     } else {
       videos = await Video.findAll({
         where: {
-          channelId: channelId,
+          channelId: id,
           selectedForProcessing: true
         }
       });
@@ -310,7 +315,7 @@ export const processChannelVideos = async (req: Request, res: Response, next: Ne
       
       const queuedCount = await videoProcessorService.queueVideosForProcessing(videoIdsToProcess);
       
-      logger.info(`Queued ${queuedCount} videos for processing via Pub/Sub for channel ${channelId}`);
+      logger.info(`Queued ${queuedCount} videos for processing via Pub/Sub for channel ${id}`);
       
       if (queuedCount === 0) {
         throw new AppError('Failed to queue any videos for processing', 500);

@@ -41,6 +41,8 @@ services:
       - GCP_STORAGE_BUCKET=${GCP_STORAGE_BUCKET}
       - GCP_SECRET_MANAGER_ENABLED=${GCP_SECRET_MANAGER_ENABLED}
       - GCP_SERVICE_ACCOUNT_KEY_SECRET=${GCP_SERVICE_ACCOUNT_KEY_SECRET}
+      # Set explicit path to credentials in the container
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/rag-widget-1b0f63fa8b77.json
     depends_on:
       postgres:
         condition: service_healthy

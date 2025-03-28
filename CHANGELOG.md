@@ -10,6 +10,22 @@ Each entry should include:
 
 ## Changes
 
+### 2025-03-28 (Video Processing and Development Environment Fixes)
+- **Fixed Video Processing Errors**:
+  - Fixed "WHERE parameter 'id' has invalid 'undefined' value" error during video processing by correcting parameter name mismatch
+  - Changed `channelId` to `id` in `processChannelVideos` function to match route parameter naming
+  - Added enhanced logging for improved debugging of video processing
+  - Fixed authentication issue with Google Cloud Pub/Sub by properly setting the credentials path
+  - Implemented robust GCP authentication that works in both development and Docker environments
+  - Added automatic detection of service account key files in multiple locations
+  - Enhanced error logging for Pub/Sub authentication issues
+
+- **Development Environment Improvements**:
+  - Fixed inconsistent port use between development and production environments
+  - Updated dev script to use port 3001 consistently across all environments
+  - Modified nodemon configuration to respect the PORT environment variable
+  - Updated app.ts to consistently use the same port
+
 ### 2025-03-27 (Service Consolidation)
 - **Consolidated Architecture**:
   - Merged auth-server and admin-portal services into a single api-service

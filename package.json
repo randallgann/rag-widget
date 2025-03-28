@@ -5,7 +5,7 @@
   "main": "dist/app.js",
   "scripts": {
     "start": "node dist/app.js",
-    "dev": "concurrently \"nodemon src/app.ts\" \"webpack --watch\"",
+    "dev": "concurrently \"PORT=3001 nodemon src/app.ts\" \"webpack --watch\"",
     "build": "tsc && webpack",
     "build:client": "webpack",
     "build:server": "tsc",

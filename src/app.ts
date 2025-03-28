@@ -12,24 +12,37 @@ import { testDbConnection } from './config/db';
 import sequelize from './config/db';
 import fs from 'fs';
 
-// Initialize GCP environment if Secret Manager is enabled
-if (config.gcp.secretManager.enabled) {
-  try {
-    // During development/bootstrap, use temporary key file to access Secret Manager
-    // In production, this would use workload identity or other secure methods
-    if (process.env.NODE_ENV === 'development' && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      const bootstrapPath = path.join(__dirname, '../bootstrap-gcp.js');
-      if (fs.existsSync(bootstrapPath)) {
-        logger.info('Loading GCP bootstrap configuration...');
-        require(bootstrapPath);
-        logger.info('GCP bootstrap configuration loaded successfully');
-      } else {
-        logger.warn('GCP Secret Manager is enabled but bootstrap-gcp.js not found');
+// Initialize GCP environment for authentication
+try {
+  // Check if Google credentials are already set
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    // Try to locate the service account key file in standard locations
+    const possibleKeyLocations = [
+      // Docker container location (mounted in docker-compose.yml)
+      path.join(process.cwd(), 'rag-widget-1b0f63fa8b77.json'),
+      // Development environment location
+      path.join(__dirname, '../rag-widget-1b0f63fa8b77.json'),
+    ];
+
+    // Use the first key file that exists
+    for (const keyPath of possibleKeyLocations) {
+      if (fs.existsSync(keyPath)) {
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
+        logger.info(`Set GOOGLE_APPLICATION_CREDENTIALS to: ${keyPath}`);
+        break;
       }
     }
-  } catch (error) {
-    logger.error('Failed to initialize GCP environment:', error);
+
+    // If still not set, log warning
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      logger.warn('Could not find GCP service account key file in standard locations');
+      logger.warn('GCP services like Pub/Sub may not function properly');
+    }
+  } else {
+    logger.info(`Using existing GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
   }
+} catch (error) {
+  logger.error('Failed to initialize GCP environment:', error);
 }
 import { DataTypes } from 'sequelize';
 
@@ -49,7 +62,8 @@ import videoRoutes from './api/routes/videoRoutes';
 import proxyRoutes from './api/routes/proxyRoutes';
 
 const app: Application = express();
-const PORT = config.port || 3001;
+// Always use port 3001 unless explicitly set via PORT env variable
+const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // Middleware
 app.use(session({
