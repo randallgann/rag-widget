@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { UserProfileResponse, ChannelResponse, VideoResponse } from '@/types/api';
-import { SidebarLayout } from '@/components/sidebar-layout';
+import { UserProfileResponse, ChannelResponse, VideoResponse } from '../../types/api';
+import { VideoProcessingProvider, useVideoProcessing } from '../../contexts/VideoProcessingContext';
+import { VideoProcessingStatus } from '../../components/video-processing-status';
+import { SidebarLayout } from '../../components/sidebar-layout';
 import { 
   Sidebar, 
   SidebarHeader, 
@@ -11,16 +13,16 @@ import {
   SidebarLabel,
   SidebarSection,
   SidebarSpacer
-} from '@/components/sidebar';
-import { Navbar, NavbarItem, NavbarSection, NavbarSpacer } from '@/components/navbar';
-import { Dropdown, DropdownButton, DropdownMenu, DropdownItem, DropdownLabel, DropdownDivider } from '@/components/dropdown';
-import { Avatar } from '@/components/avatar';
-import { Heading } from '@/components/heading';
-import { Text } from '@/components/text';
-import { Button } from '@/components/button';
-import { Badge } from '@/components/badge';
-import { Table, TableHead, TableRow, TableHeader, TableBody, TableCell } from '@/components/table';
-import { Checkbox } from '@/components/checkbox';
+} from '../../components/sidebar';
+import { Navbar, NavbarItem, NavbarSection, NavbarSpacer } from '../../components/navbar';
+import { Dropdown, DropdownButton, DropdownMenu, DropdownItem, DropdownLabel, DropdownDivider } from '../../components/dropdown';
+import { Avatar } from '../../components/avatar';
+import { Heading } from '../../components/heading';
+import { Text } from '../../components/text';
+import { Button } from '../../components/button';
+import { Badge } from '../../components/badge';
+import { Table, TableHead, TableRow, TableHeader, TableBody, TableCell } from '../../components/table';
+import { Checkbox } from '../../components/checkbox';
 import {
   ArrowRightStartOnRectangleIcon,
   ChevronDownIcon,
@@ -146,6 +148,15 @@ const getProxiedThumbnailUrl = (url: string): string => {
   return url;
 };
 
+// Create a wrapper component to provide the VideoProcessingContext
+const ChannelDetailPageWithProvider: React.FC<ChannelDetailPageProps> = (props) => {
+  return (
+    <VideoProcessingProvider>
+      <ChannelDetailPage {...props} />
+    </VideoProcessingProvider>
+  );
+};
+
 const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetch, user: initialUser }) => {
   const { channelId } = useParams<{ channelId: string }>();
   const [user, setUser] = useState<UserProfileResponse['user'] | null>(initialUser || null);
@@ -159,6 +170,9 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<string>('publishedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Get video processing status context
+  const { processingVideos, registerProcessingVideo } = useVideoProcessing();
 
   // Create a simple logger for the channel detail page
   const logger = {
@@ -419,22 +433,27 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
     }
   };
 
-  // Set up polling for processing status
+  // We've removed the polling effect since we now use WebSockets for real-time updates
+  // Register any videos that are already processing when the component mounts
   useEffect(() => {
-    // Get IDs of videos that are currently processing
-    const processingVideoIds = videos
-      .filter(video => video.processingStatus === 'processing')
-      .map(video => video.id);
+    // Get videos that are currently processing
+    const processingVideos = videos
+      .filter(video => video.processingStatus === 'processing');
     
-    if (processingVideoIds.length === 0) return;
+    if (processingVideos.length === 0) return;
     
-    // Set up polling interval to check status every 10 seconds
-    const statusInterval = setInterval(() => {
-      checkProcessingStatus(processingVideoIds);
-    }, 10000);
+    // Register them in the context
+    processingVideos.forEach(video => {
+      registerProcessingVideo(video.id, {
+        videoId: video.id,
+        processingStatus: video.processingStatus,
+        processingProgress: video.processingProgress || 0,
+        processingStage: video.processingStage,
+        processingError: video.processingError,
+      });
+    });
     
-    // Clean up interval on unmount
-    return () => clearInterval(statusInterval);
+    logger.debug(`Registered ${processingVideos.length} videos that are already processing`);
   }, [videos]);
 
   // Function to process selected videos
@@ -466,13 +485,32 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
       const data = await response.json();
       logger.debug('Processing started successfully', data);
       
+      // Register started videos in the context
+      if (data.data.videos) {
+        data.data.videos.forEach((video: any) => {
+          registerProcessingVideo(video.id, {
+            videoId: video.id,
+            processingStatus: 'processing',
+            processingProgress: 0,
+            processingStage: 'initialization'
+          });
+        });
+      } else {
+        // If videos aren't returned in the response, register all selected videos
+        videoIds.forEach(videoId => {
+          registerProcessingVideo(videoId, {
+            videoId,
+            processingStatus: 'processing',
+            processingProgress: 0,
+            processingStage: 'initialization'
+          });
+        });
+      }
+      
       alert(`Processing started for ${data.data.processingCount} videos. This may take some time.`);
       
       // After processing is initiated, refresh the channel details
       await fetchChannelDetails();
-      
-      // Immediately check status of the videos that were just queued
-      await checkProcessingStatus(videoIds);
     } catch (error: any) {
       logger.error('Error processing selected videos', error);
       
@@ -779,103 +817,86 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
               </TableRow>
             </TableHead>
             <TableBody>
-              {paginatedVideos.map((video) => (
-                <TableRow key={video.id}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedVideos.has(video.id)}
-                      onChange={() => handleVideoSelection(video.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-3">
-                      {video.thumbnailUrl && (
-                        <img 
-                          src={getProxiedThumbnailUrl(video.thumbnailUrl)} 
-                          alt={video.title} 
-                          className="h-16 w-28 object-cover rounded"
-                        />
-                      )}
-                      <div>
-                        <Text className="font-medium">{video.title}</Text>
-                        <Text color="subtle" className="text-sm line-clamp-2">
-                          {video.description?.substring(0, 100)}
-                          {video.description && video.description.length > 100 && '...'}
-                        </Text>
+              {paginatedVideos.map((video) => {
+                // Check if video is processing either from DB or from real-time context
+                const isProcessing = video.processingStatus === 'processing' || 
+                                     processingVideos[video.id]?.processingStatus === 'processing';
+                
+                return (
+                  <TableRow 
+                    key={video.id}
+                    className={isProcessing ? 'bg-blue-50 dark:bg-blue-900/20' : ''}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedVideos.has(video.id)}
+                        onChange={() => handleVideoSelection(video.id)}
+                        disabled={isProcessing}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-3">
+                        {video.thumbnailUrl && (
+                          <img 
+                            src={getProxiedThumbnailUrl(video.thumbnailUrl)} 
+                            alt={video.title} 
+                            className="h-16 w-28 object-cover rounded"
+                          />
+                        )}
+                        <div>
+                          <Text className="font-medium">{video.title}</Text>
+                          <Text color="subtle" className="text-sm line-clamp-2">
+                            {video.description?.substring(0, 100)}
+                            {video.description && video.description.length > 100 && '...'}
+                          </Text>
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Text>{formatDuration(video.duration || '')}</Text>
-                  </TableCell>
-                  <TableCell>
-                    <Text color="subtle">
-                      {video.publishedAt ? new Date(video.publishedAt).toLocaleDateString() : 'Unknown'}
-                    </Text>
-                  </TableCell>
-                  <TableCell>
-                    <Text>{formatViewCount(video.viewCount || 0)}</Text>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <Badge 
-                        color={
-                          video.processingStatus === 'completed' ? 'green' : 
-                          video.processingStatus === 'processing' ? 'blue' : 
-                          video.processingStatus === 'failed' ? 'red' : 'yellow'
-                        }
-                      >
-                        {video.processingStatus}
-                      </Badge>
-                      
-                      {video.processingStatus === 'processing' && (
-                        <div className="mt-1">
-                          <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
-                            <div 
-                              className="bg-blue-600 h-2 rounded-full" 
-                              style={{ width: `${video.processingProgress || 0}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {video.processingProgress || 0}%
-                          </span>
-                        </div>
-                      )}
-                      
-                      {video.processingStatus === 'failed' && video.processingError && (
-                        <div className="mt-1">
-                          <span className="text-xs text-red-500 truncate block max-w-xs" title={video.processingError}>
-                            {video.processingError}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button 
-                        color="blue"
-                        disabled={video.processingStatus === 'processing'}
-                        onClick={() => {
-                          // Individual video processing
-                          alert(`Process video ${video.id} functionality to be implemented`);
-                        }}
-                      >
-                        {video.processingStatus === 'completed' ? 'Reprocess' : 'Process'}
-                      </Button>
-                      <Button 
-                        color="zinc"
-                        onClick={() => {
-                          // Video details
-                          alert(`View video ${video.id} details to be implemented`);
-                        }}
-                      >
-                        Details
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <Text>{formatDuration(video.duration || '')}</Text>
+                    </TableCell>
+                    <TableCell>
+                      <Text color="subtle">
+                        {video.publishedAt ? new Date(video.publishedAt).toLocaleDateString() : 'Unknown'}
+                      </Text>
+                    </TableCell>
+                    <TableCell>
+                      <Text>{formatViewCount(video.viewCount || 0)}</Text>
+                    </TableCell>
+                    <TableCell>
+                      <VideoProcessingStatus 
+                        videoId={video.id}
+                        initialStatus={video.processingStatus}
+                        initialProgress={video.processingProgress}
+                        initialStage={video.processingStage}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button 
+                          color="blue"
+                          disabled={isProcessing}
+                          onClick={() => {
+                            // Individual video processing
+                            alert(`Process video ${video.id} functionality to be implemented`);
+                          }}
+                        >
+                          {video.processingStatus === 'completed' ? 'Reprocess' : 'Process'}
+                        </Button>
+                        <Button 
+                          color="zinc"
+                          onClick={() => {
+                            // Video details
+                            alert(`View video ${video.id} details to be implemented`);
+                          }}
+                        >
+                          Details
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -966,4 +987,4 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   );
 };
 
-export default ChannelDetailPage;
+export default ChannelDetailPageWithProvider;

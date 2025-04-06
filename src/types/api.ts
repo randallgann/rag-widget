@@ -62,6 +62,15 @@ export interface WidgetResponse {
   updatedAt: string;
 }
 
+export interface VideoProcessingStatus {
+  processingStatus: 'pending' | 'processing' | 'completed' | 'failed';
+  processingProgress: number;
+  processingStage?: string | null;
+  processingError?: string | null;
+  processingLastUpdated?: string;
+  estimatedTimeRemaining?: number;
+}
+
 export interface VideoResponse {
   id: string;
   youtubeId: string;
@@ -79,6 +88,8 @@ export interface VideoResponse {
   selectedForProcessing?: boolean;
   processingProgress?: number;
   processingError?: string | null;
+  processingStage?: string;
+  processingLastUpdated?: string;
   createdAt: string;
   updatedAt: string;
 }

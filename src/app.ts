@@ -12,6 +12,7 @@ import { testDbConnection } from './config/db';
 import sequelize from './config/db';
 import fs from 'fs';
 import { videoProcStatusSubscriber } from './services/processing/videoProcStatusSubscriber';
+import { setupWebSocketServer } from './api/controllers/statusController';
 
 // Initialize GCP environment for authentication
 try {
@@ -138,16 +139,22 @@ Object.values(models).forEach(model => {
   }
 });
 
+// Create HTTP server instance explicitly for WebSocket support
+const server = require('http').createServer(app);
+
 // Start server
 if (process.env.NODE_ENV !== 'test') {
   // Test database connection before starting server - no migrations needed as init.sql handles table creation
   testDbConnection()
     .then(async () => {
       // Start the server after successful database connection
-      app.listen(PORT, () => {
+      server.listen(PORT, () => {
         logger.info(`Server running on port ${PORT}`);
         logger.info(`Auth routes enabled - Auth0 integration active`);
       });
+      
+      // Set up WebSocket server for status updates
+      setupWebSocketServer(server);
       
       // Start the video processing status subscriber
       try {
@@ -168,7 +175,7 @@ if (process.env.NODE_ENV !== 'test') {
       } else {
         logger.warn('Continuing in development mode without database connection.');
         // Still start the server for UI testing purposes
-        app.listen(PORT, () => {
+        server.listen(PORT, () => {
           logger.info(`Server running on port ${PORT} (WITHOUT DATABASE CONNECTION)`);
           logger.info(`Auth routes enabled - Auth0 integration active (UI only)`);
         });
