@@ -1,4 +1,5 @@
 import { PubSub, Subscription, Message } from '@google-cloud/pubsub';
+import { EventEmitter } from 'events';
 import { logger } from '../../config/logger';
 import Video from '../../db/models/Video';
 import { config } from '../../config/environment';
@@ -19,18 +20,26 @@ interface StatusMessage {
 /**
  * Service for subscribing to video processing status updates
  */
-export class VideoProcStatusSubscriber {
+export class VideoProcStatusSubscriber extends EventEmitter {
   private pubSubClient: PubSub;
   private statusTopic: string;
   private subscription: Subscription;
   private isRunning: boolean = false;
 
   constructor() {
+    super(); // Initialize EventEmitter
     this.pubSubClient = new PubSub({
       projectId: config.gcp.projectId,
     });
     this.statusTopic = config.gcp.pubsub.videoProcessingStatusTopic;
-    this.subscription = this.pubSubClient.subscription(`${this.statusTopic}-subscription`);
+    
+    // Extract just the topic name without full path if it contains 'projects/'
+    const topicName = this.statusTopic.includes('projects/') 
+      ? this.statusTopic.split('/').pop() 
+      : this.statusTopic;
+    
+    // Create subscription with simple name
+    this.subscription = this.pubSubClient.subscription(`${topicName}-subscription`);
   }
 
   /**
@@ -46,10 +55,18 @@ export class VideoProcStatusSubscriber {
       try {
         const [exists] = await this.subscription.exists();
         if (!exists) {
-          logger.info(`Creating subscription ${this.statusTopic}-subscription`);
-          [this.subscription] = await this.pubSubClient
-            .topic(this.statusTopic)
-            .createSubscription(`${this.statusTopic}-subscription`);
+          // Extract just the topic name without full path if it contains 'projects/'
+          const topicName = this.statusTopic.includes('projects/') 
+            ? this.statusTopic.split('/').pop() 
+            : this.statusTopic;
+            
+          logger.info(`Creating subscription ${topicName}-subscription`);
+          
+          // Get a reference to the topic using the full topic path
+          const topic = this.pubSubClient.topic(this.statusTopic);
+          
+          // Create subscription with simple name
+          [this.subscription] = await topic.createSubscription(`${topicName}-subscription`);
         }
       } catch (error) {
         logger.error('Error checking/creating subscription:', error);
@@ -115,7 +132,7 @@ export class VideoProcStatusSubscriber {
   }
   
   /**
-   * Update video status in database
+   * Update video status in database and emit event
    */
   private async updateVideoStatus(statusUpdate: StatusMessage) {
     try {
@@ -163,6 +180,38 @@ export class VideoProcStatusSubscriber {
       updateData.processingLastUpdated = new Date();
       
       await video.update(updateData);
+      
+      // Calculate estimated time remaining (simplified version - could be more complex in production)
+      // For now, let's just use a simple linear projection
+      let estimatedTimeRemaining: number | undefined = undefined;
+      if (processingStatus === 'processing' && progress > 0 && progress < 100) {
+        // If we have a last updated timestamp, calculate time remaining
+        if (video.processingLastUpdated) {
+          const elapsedTime = (new Date().getTime() - video.processingLastUpdated.getTime()) / 1000;
+          const progressDelta = progress - (video.processingProgress || 0);
+          
+          // Only calculate if we've made progress and have elapsed time
+          if (progressDelta > 0 && elapsedTime > 0) {
+            // Time per percentage point
+            const timePerPercent = elapsedTime / progressDelta;
+            // Remaining percentage points
+            const remainingPercent = 100 - progress;
+            // Estimated time remaining in seconds
+            estimatedTimeRemaining = Math.round(timePerPercent * remainingPercent);
+          }
+        }
+      }
+      
+      // Emit event for WebSocket to broadcast
+      this.emit('statusUpdate', {
+        videoId,
+        processingStatus,
+        processingProgress: progress,
+        processingStage: stage || null,
+        processingError: error || null,
+        processingLastUpdated: new Date(),
+        estimatedTimeRemaining
+      });
       
       logger.info(`Updated status for video ${videoId} to ${processingStatus} (${progress}%)`);
     } catch (error) {

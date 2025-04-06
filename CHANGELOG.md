@@ -10,6 +10,26 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-06 (Google Cloud Pub/Sub Permission and Topic Configuration Fix)
+- **Fixed Google Cloud Pub/Sub Connectivity Issues**:
+  - Fixed PERMISSION_DENIED error by adding Pub/Sub Editor and Pub/Sub Subscriber roles to service account
+  - Created missing 'video-processing-status' topic in Google Cloud Pub/Sub
+  - Fixed invalid subscription name format when using full resource paths with 'projects/' prefix
+  - Enhanced videoProcStatusSubscriber.ts to properly handle both simple topic names and full resource paths
+  - Added topic name extraction to ensure subscription names are always correctly formatted
+
+### 2025-03-28 (Video Processing Status UI & Real-time Updates)
+- **Implemented Real-Time Video Processing Status Updates**:
+  - Added WebSocket server for live status updates without polling
+  - Created React context for video processing status management
+  - Built VideoProcessingStatus component with progress visualization
+  - Enhanced video processing subscriber to emit real-time events
+  - Implemented estimated time remaining calculation
+  - Added visual differentiation for videos being processed
+  - Disabled selection of videos during processing
+  - Optimized video list rendering with status context integration
+  - Enhanced status display with processing stage information
+  
 ### 2025-03-28 (Video Processing Status Tracking & Environment Fixes)
 - **Implemented Video Processing Status Tracking**:
   - Added `videoProcStatusSubscriber` service to receive real-time status updates from processing cluster
