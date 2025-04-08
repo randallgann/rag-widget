@@ -10,6 +10,25 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-07 (Video Processing UI Robustness Improvements)
+- **Enhanced Video Processing UI Robustness**:
+  - Added capability to clear stale processing states with `clearStaleProcessingVideos` function
+  - Improved video status tracking by automatically removing completed/failed videos from active processing
+  - Added time-based staleness detection for processing videos (10-minute threshold)
+  - Enhanced updateProcessingStatus to properly handle completed and failed states
+  - Created comprehensive design document for video processing improvements
+  - Added localStorage persistence for video processing state across page refreshes
+  - Implemented status verification on page load to detect and fix stale processing states
+  - Added new API endpoint for resetting completed/failed video processing status
+  - Enhanced video selection to prevent selecting/modifying videos that are processing
+  - Improved Process Selected Videos button to properly handle videos already in processing
+  - Added refresh animation and visual feedback during loading states
+  - Fixed issue where UI could get stuck with videos in processing state after inactivity
+  - Fixed TypeScript 'Property does not exist on type never' error with explicit type assertions
+  - Added localStorage persistence for processing state across page refreshes
+  - Fixed excessive polling by switching to one-time status check and WebSocket updates
+  - Optimized resource usage by eliminating repeated status-batch API calls
+
 ### 2025-04-06 (Google Cloud Pub/Sub Permission and Topic Configuration Fix)
 - **Fixed Google Cloud Pub/Sub Connectivity Issues**:
   - Fixed PERMISSION_DENIED error by adding Pub/Sub Editor and Pub/Sub Subscriber roles to service account

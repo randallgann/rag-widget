@@ -22,6 +22,14 @@
 - Error handling: Use custom error classes with errorHandler middleware
 - Use logger from config instead of console.log
 
+## TypeScript Error Handling Tips
+- Always specify the error type in catch blocks: `catch (error: any) { ... }`
+- For "Property does not exist on type 'never'" errors in functions like useEffect cleanups:
+  - Use explicit type assertions: `if (socket && (socket as WebSocket).readyState === WebSocket.OPEN)`
+  - This is particularly important for variables that TypeScript might not correctly track through closures
+- For event handlers, explicitly type the event parameter: `(event: React.ChangeEvent<HTMLInputElement>)`
+- When using generics with React useState, always provide explicit type: `useState<Record<string, VideoStatus>>({})`
+
 ## Project Structure
 - `src/api/` - Controllers, routes, middlewares
 - `src/config/` - Environment variables, logging
