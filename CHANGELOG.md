@@ -10,6 +10,19 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-08 (WebSocket Connection Management Improvements)
+- **Fixed WebSocket Connection Leak**:
+  - Relocated VideoProcessingProvider to App.tsx to prevent multiple connections
+  - Enhanced WebSocket cleanup logic to properly close connections in all states
+  - Added unique identifiers for WebSocket connections to enable better tracking
+  - Implemented delayed removal of completed/failed videos to ensure UI updates
+  - Added comprehensive debugging tools for WebSocket connection monitoring
+  - Created browser console testing utilities for status update simulation
+  - Added visual debug panel in development environment for real-time connection stats
+  - Enhanced status update logging for better visibility of completion events
+  - Added detailed documentation on WebSocket architecture and testing procedures
+  - Fixed issue where UI wouldn't update after final status message
+
 ### 2025-04-07 (Video Processing UI Robustness Improvements)
 - **Enhanced Video Processing UI Robustness**:
   - Added capability to clear stale processing states with `clearStaleProcessingVideos` function

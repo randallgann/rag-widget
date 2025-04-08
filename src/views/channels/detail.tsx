@@ -148,14 +148,8 @@ const getProxiedThumbnailUrl = (url: string): string => {
   return url;
 };
 
-// Create a wrapper component to provide the VideoProcessingContext
-const ChannelDetailPageWithProvider: React.FC<ChannelDetailPageProps> = (props) => {
-  return (
-    <VideoProcessingProvider>
-      <ChannelDetailPage {...props} />
-    </VideoProcessingProvider>
-  );
-};
+// The VideoProcessingProvider has been moved to App.tsx
+// to prevent multiple WebSocket connections
 
 const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetch, user: initialUser }) => {
   const { channelId } = useParams<{ channelId: string }>();
@@ -1161,4 +1155,4 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   );
 };
 
-export default ChannelDetailPageWithProvider;
+export default ChannelDetailPage;

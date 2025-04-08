@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter as Router, Route, Redirect, Switch } from 'react-router-dom';
 import { UserProfileResponse } from '@/types/api';
+import { VideoProcessingProvider } from '../contexts/VideoProcessingContext';
 import Dashboard from './dashboard';
 import AddChannelButton from './channelOnboarding';
 
@@ -614,7 +615,9 @@ const App: React.FC = () => {
         </div>
       )}
       
-      <Switch>
+      {/* Wrap the entire application with VideoProcessingProvider to ensure single WebSocket connection */}
+      <VideoProcessingProvider>
+        <Switch>
         <GuestRoute exact path="/" component={HomePage} />
         <ProtectedRoute exact path="/dashboard" component={Dashboard} />
         <ProtectedRoute exact path="/channels" component={() => {
@@ -645,6 +648,7 @@ const App: React.FC = () => {
           return <Redirect to="/" />;
         }} />
       </Switch>
+      </VideoProcessingProvider>
     </Router>
   );
 };
