@@ -428,3 +428,73 @@ export const processChannelVideos = async (req: Request, res: Response, next: Ne
     next(error);
   }
 };
+
+/**
+ * Reset video processing status
+ * @route PUT /api/videos/:id/reset-processing
+ */
+export const resetVideoProcessing = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || !req.user.userId) {
+      throw new AppError('Unauthorized', 401);
+    }
+    
+    const { id } = req.params;
+    
+    // Get user from our database
+    const user = await userService.getUserByAuth0Id(req.user.userId);
+    
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+    
+    // Find the video with its channel info to check permissions
+    const video = await Video.findByPk(id, {
+      include: [{
+        model: Channel,
+        as: 'channel',
+        attributes: ['id', 'userId'],
+      }]
+    });
+    
+    if (!video) {
+      throw new AppError('Video not found', 404);
+    }
+    
+    // Check if the video belongs to a channel owned by the user
+    if (!video.channel || video.channel.userId !== user.id) {
+      throw new AppError('You do not have permission to reset this video', 403);
+    }
+    
+    // Only allow resetting videos that are in completed or failed state
+    if (video.processingStatus !== 'completed' && video.processingStatus !== 'failed') {
+      throw new AppError(`Cannot reset video in '${video.processingStatus}' state. Only completed or failed videos can be reset.`, 400);
+    }
+    
+    // Update the video to reset processing state
+    await video.update({
+      processingStatus: 'pending',
+      processingProgress: 0,
+      processingError: null,
+      processingStage: null,
+      processingLastUpdated: null
+    });
+    
+    logger.info(`Reset processing status for video ${id} to pending state`);
+    
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        video: {
+          id: video.id,
+          title: video.title,
+          processingStatus: 'pending'
+        }
+      },
+      message: 'Video processing status has been reset'
+    });
+  } catch (error: any) {
+    logger.error('Reset video processing error:', error);
+    next(error);
+  }
+};

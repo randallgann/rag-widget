@@ -19,8 +19,8 @@ export interface VideoAttributes {
   selectedForProcessing?: boolean;
   processingProgress?: number;
   processingError?: string | null;
-  processingStage?: string;
-  processingLastUpdated?: Date;
+  processingStage?: string | null;
+  processingLastUpdated?: Date | null;
   status: 'active' | 'inactive' | 'pending';
   processingStatus: 'pending' | 'processing' | 'completed' | 'failed';
   createdAt: Date;

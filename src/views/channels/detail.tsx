@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { UserProfileResponse, ChannelResponse, VideoResponse } from '../../types/api';
 import { VideoProcessingProvider, useVideoProcessing } from '../../contexts/VideoProcessingContext';
@@ -170,9 +170,10 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<string>('publishedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Get video processing status context
-  const { processingVideos, registerProcessingVideo } = useVideoProcessing();
+  const { processingVideos, registerProcessingVideo, clearStaleProcessingVideos } = useVideoProcessing();
 
   // Create a simple logger for the channel detail page
   const logger = {
@@ -203,6 +204,38 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
       logger.debug(`Initialized ${initiallySelected.size} selected videos from server data`);
     }
   }, [videos]);
+  
+  // Create a ref to track if we've already checked processing status
+  const processingCheckedRef = useRef(false);
+
+  // Verify that videos in processing status are still actually processing - but only once when the component mounts
+  useEffect(() => {
+    const checkAndResetStaleProcessingVideos = async () => {
+      try {
+        // Identify videos that appear to be processing in the UI
+        const processingVideoIds = videos
+          .filter(video => video.processingStatus === 'processing')
+          .map(video => video.id);
+        
+        if (processingVideoIds.length === 0) return;
+        
+        logger.debug(`Verifying ${processingVideoIds.length} videos in processing state (one-time check)`);
+        
+        // Check their actual status from the server (just once when component mounts)
+        await checkProcessingStatus(processingVideoIds);
+        
+        // clearStaleProcessingVideos will be called after we refresh the videos list
+      } catch (error: any) {
+        logger.error('Error checking stale processing videos:', error);
+      }
+    };
+    
+    // Only check once when the component first mounts with videos loaded
+    if (videos.length > 0 && !loading && !processingCheckedRef.current) {
+      checkAndResetStaleProcessingVideos();
+      processingCheckedRef.current = true;
+    }
+  }, [videos, loading]);
 
   // Fetch channel details and videos
   const fetchChannelDetails = async () => {
@@ -225,6 +258,21 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
         // Extract videos from the channel data
         if (data.data.channel.videos) {
           setVideos(data.data.channel.videos);
+          
+          // Register processing videos in WebSocket context without polling
+          const processingVideos = data.data.channel.videos.filter(
+            (v: VideoResponse) => v.processingStatus === 'processing'
+          );
+          
+          if (processingVideos.length > 0) {
+            logger.debug(`Found ${processingVideos.length} videos with processing status, registering with WebSocket context...`);
+            // Don't call checkProcessingStatus here - let WebSocket handle updates
+            // Just clear any stale processing that might be leftover
+            clearStaleProcessingVideos();
+          } else {
+            // If no videos are processing, clear any stale processing states in the context
+            clearStaleProcessingVideos();
+          }
         }
       } else {
         throw new Error('Invalid channel data received');
@@ -256,6 +304,16 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   const handleVideoSelection = async (videoId: string) => {
     if (!videoId) {
       logger.error('Attempted to select video with invalid ID');
+      return;
+    }
+    
+    // Check if video is currently processing - if so, don't allow selection changes
+    const video = videos.find(v => v.id === videoId);
+    const isProcessing = video?.processingStatus === 'processing' || 
+                         processingVideos[videoId]?.processingStatus === 'processing';
+    
+    if (isProcessing) {
+      logger.debug(`Cannot change selection for video ${videoId} as it is currently processing`);
       return;
     }
     
@@ -307,7 +365,19 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   // Function to handle selecting all videos on the current page
   const handleSelectAllOnPage = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const isSelected = event.target.checked;
-    const videosOnPage = filteredVideos.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+    const videosOnPage = filteredVideos
+      .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+      // Exclude videos that are already processing
+      .filter(video => {
+        const isProcessing = video.processingStatus === 'processing' || 
+                            processingVideos[video.id]?.processingStatus === 'processing';
+        return !isProcessing;
+      });
+    
+    if (videosOnPage.length === 0) {
+      logger.debug('No selectable videos on this page (all are processing or page is empty)');
+      return;
+    }
     
     try {
       // Optimistically update UI
@@ -370,15 +440,55 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   // Function to handle refreshing a channel
   const handleRefreshChannel = async () => {
     try {
+      setIsRefreshing(true);
       logger.debug(`Refreshing channel ${channelId}`);
       
-      // Placeholder for actual implementation
-      alert('Channel refresh functionality to be implemented');
-      
-      // After refreshing, fetch channel details again to get updated data
+      // Refresh channel details and videos
       await fetchChannelDetails();
-    } catch (error) {
+      
+      // Reset any stale processing states
+      clearStaleProcessingVideos();
+      
+      setIsRefreshing(false);
+    } catch (error: any) {
       logger.error(`Error refreshing channel ${channelId}`, error);
+      setIsRefreshing(false);
+    }
+  };
+  
+  // Function to reset a failed or completed video processing status
+  const handleResetVideoProcessing = async (videoId: string) => {
+    try {
+      logger.debug(`Resetting processing status for video ${videoId}`);
+      
+      const video = videos.find(v => v.id === videoId);
+      if (!video) {
+        logger.error(`Cannot find video with ID ${videoId}`);
+        return;
+      }
+      
+      // Only allow resetting videos that are in a failed or completed state
+      if (video.processingStatus !== 'failed' && video.processingStatus !== 'completed') {
+        logger.debug(`Cannot reset video in ${video.processingStatus} state`);
+        return;
+      }
+      
+      const response = await authenticatedFetch(`/api/videos/${videoId}/reset-processing`, {
+        method: 'PUT'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to reset processing status: ${response.status} ${response.statusText}`);
+      }
+      
+      logger.debug(`Successfully reset processing status for video ${videoId}`);
+      
+      // Refresh videos to update UI
+      await fetchChannelDetails();
+      
+    } catch (error: any) {
+      logger.error('Error resetting video processing status:', error);
+      alert('Failed to reset video processing status. Please try again.');
     }
   };
 
@@ -419,6 +529,7 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
                   ...updatedVideos[videoIndex],
                   processingStatus: statusVideo.processingStatus,
                   processingProgress: statusVideo.processingProgress,
+                  processingStage: statusVideo.processingStage,
                   processingError: statusVideo.processingError
                 };
               }
@@ -427,6 +538,16 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
           
           return updatedVideos;
         });
+        
+        // Keep processing context in sync with database
+        // If a video shows as not processing in DB but is in our context, remove it
+        const staleProcessingIds = data.data.videos
+          .filter((v: any) => v.processingStatus !== 'processing')
+          .map((v: any) => v.id);
+          
+        if (staleProcessingIds.length > 0) {
+          clearStaleProcessingVideos(staleProcessingIds);
+        }
       }
     } catch (error: any) {
       logger.error('Error checking processing status:', error);
@@ -468,6 +589,33 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
       
       // Convert Set to Array for the API request
       const videoIds = Array.from(selectedVideos);
+      
+      // Check if any of the selected videos are already processing
+      const alreadyProcessingIds = videoIds.filter(id => {
+        const isProcessing = videos.find(v => v.id === id)?.processingStatus === 'processing' || 
+                            processingVideos[id]?.processingStatus === 'processing';
+        return isProcessing;
+      });
+      
+      if (alreadyProcessingIds.length > 0) {
+        logger.debug(`Found ${alreadyProcessingIds.length} videos already processing`);
+        // Remove already processing videos from the list
+        const filteredIds = videoIds.filter(id => !alreadyProcessingIds.includes(id));
+        
+        if (filteredIds.length === 0) {
+          alert('All selected videos are already processing.');
+          return;
+        }
+        
+        const continueProcessing = window.confirm(
+          `${alreadyProcessingIds.length} out of ${videoIds.length} selected videos are already processing. Continue with processing the remaining ${filteredIds.length} videos?`
+        );
+        
+        if (!continueProcessing) return;
+        
+        // Proceed with the filtered list
+        logger.debug(`Continuing with ${filteredIds.length} non-processing videos`);
+      }
       
       // Call the API to start processing
       const response = await authenticatedFetch(`/api/channels/${channelId}/process`, {
@@ -565,9 +713,16 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   const totalPages = Math.ceil(filteredVideos.length / pageSize);
   const paginatedVideos = filteredVideos.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Check if all videos on the current page are selected
-  const areAllVideosOnPageSelected = paginatedVideos.length > 0 && 
-    paginatedVideos.every(video => selectedVideos.has(video.id));
+  // Get list of selectable videos (non-processing) for the current page
+  const selectableVideosOnPage = paginatedVideos.filter(video => {
+    const isProcessing = video.processingStatus === 'processing' || 
+                         processingVideos[video.id]?.processingStatus === 'processing';
+    return !isProcessing;
+  });
+
+  // Check if all selectable videos on the current page are selected
+  const areAllVideosOnPageSelected = selectableVideosOnPage.length > 0 && 
+    selectableVideosOnPage.every(video => selectedVideos.has(video.id));
 
   if (loading) {
     return <div className="loading">Loading channel details...</div>;
@@ -655,9 +810,13 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
           </NavbarSection>
           <NavbarSpacer />
           <NavbarSection>
-            <Button color="blue" onClick={handleRefreshChannel}>
-              <ArrowPathIcon className="w-5 h-5 mr-2" />
-              Refresh Channel
+            <Button 
+              color="blue" 
+              onClick={handleRefreshChannel}
+              disabled={isRefreshing}
+            >
+              <ArrowPathIcon className={`w-5 h-5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh Channel'}
             </Button>
             <Dropdown>
               <DropdownButton as={NavbarItem}>
@@ -781,10 +940,12 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
             color="blue" 
             disabled={
               selectedVideos.size === 0 || 
-              // Disable if any selected video is already processing
-              Array.from(selectedVideos).some(id => 
-                videos.find(v => v.id === id)?.processingStatus === 'processing'
-              )
+              // Disable if ALL selected videos are already processing
+              Array.from(selectedVideos).every(id => {
+                const isProcessing = videos.find(v => v.id === id)?.processingStatus === 'processing' || 
+                                    processingVideos[id]?.processingStatus === 'processing';
+                return isProcessing;
+              })
             }
             onClick={handleProcessSelectedVideos}
           >
@@ -806,6 +967,7 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
                       // Create a synthetic event to match the expected signature
                       handleSelectAllOnPage({ target: { checked } } as React.ChangeEvent<HTMLInputElement>);
                     }}
+                    disabled={selectableVideosOnPage.length === 0}
                   />
                 </TableHeader>
                 <TableHeader>Video</TableHeader>
@@ -877,11 +1039,23 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
                           color="blue"
                           disabled={isProcessing}
                           onClick={() => {
-                            // Individual video processing
-                            alert(`Process video ${video.id} functionality to be implemented`);
+                            // Individual video processing or reset
+                            if (video.processingStatus === 'completed' || video.processingStatus === 'failed') {
+                              handleResetVideoProcessing(video.id);
+                            } else {
+                              // Process this single video
+                              if (!selectedVideos.has(video.id)) {
+                                setSelectedVideos(prev => {
+                                  const newSelected = new Set(prev);
+                                  newSelected.add(video.id);
+                                  return newSelected;
+                                });
+                              }
+                              handleProcessSelectedVideos();
+                            }
                           }}
                         >
-                          {video.processingStatus === 'completed' ? 'Reprocess' : 'Process'}
+                          {video.processingStatus === 'completed' || video.processingStatus === 'failed' ? 'Reprocess' : 'Process'}
                         </Button>
                         <Button 
                           color="zinc"

@@ -6,7 +6,8 @@ import {
   processChannelVideos,
   getVideoProcessingStatus,
   getBatchVideoProcessingStatus,
-  getDetailedVideoProcessingStatus
+  getDetailedVideoProcessingStatus,
+  resetVideoProcessing
 } from '../controllers/videoController';
 
 const router = Router();
@@ -52,5 +53,12 @@ router.post('/status-batch', validateAuth0Token, requireAuth, getBatchVideoProce
  * @access  Private
  */
 router.get('/:id/status-detailed', validateAuth0Token, requireAuth, getDetailedVideoProcessingStatus);
+
+/**
+ * @route   PUT /api/videos/:id/reset-processing
+ * @desc    Reset the processing status of a video to pending
+ * @access  Private
+ */
+router.put('/:id/reset-processing', validateAuth0Token, requireAuth, resetVideoProcessing);
 
 export default router;
