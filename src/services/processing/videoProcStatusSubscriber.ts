@@ -110,7 +110,18 @@ export class VideoProcStatusSubscriber extends EventEmitter {
   private async handleMessage(message: Message) {
     try {
       const data = JSON.parse(Buffer.from(message.data).toString());
-      const statusUpdate = data as StatusMessage;
+      
+      // Map the incoming message format to the expected StatusMessage format
+      const statusUpdate: StatusMessage = {
+        // Map fields from the received message format to our expected format
+        videoId: data.video_id || data.videoId,
+        jobId: data.message_id || data.jobId || `job-${Date.now()}`,
+        status: data.status || 'processing',
+        progress: data.progress_percent || data.progress || 0,
+        stage: data.current_stage || data.stage,
+        error: data.error,
+        timestamp: data.timestamp || new Date().toISOString()
+      };
       
       logger.info(`Received status update for video ${statusUpdate.videoId}:`, { 
         jobId: statusUpdate.jobId,
@@ -118,6 +129,13 @@ export class VideoProcStatusSubscriber extends EventEmitter {
         progress: statusUpdate.progress,
         stage: statusUpdate.stage
       });
+      
+      if (!statusUpdate.videoId) {
+        logger.error('Received message with missing videoId:', data);
+        // Acknowledge this message to prevent redelivery of invalid messages
+        message.ack();
+        return;
+      }
       
       // Update video in database
       await this.updateVideoStatus(statusUpdate);
@@ -138,12 +156,19 @@ export class VideoProcStatusSubscriber extends EventEmitter {
     try {
       const { videoId, status, progress, stage, error } = statusUpdate;
       
-      // Find video by ID
-      const video = await Video.findByPk(videoId);
+      // First try to find video by database ID
+      let video = await Video.findByPk(videoId);
       
+      // If not found, try to find by YouTube ID
       if (!video) {
-        logger.warn(`Video not found for status update: ${videoId}`);
-        return;
+        video = await Video.findOne({ where: { youtubeId: videoId } });
+        
+        if (!video) {
+          logger.warn(`Video not found for status update. Tried database ID and YouTube ID: ${videoId}`);
+          return;
+        }
+        
+        logger.info(`Found video by YouTube ID: ${videoId}, Database ID: ${video.id}`);
       }
       
       // Map status to database enum

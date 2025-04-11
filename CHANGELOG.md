@@ -10,6 +10,16 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-11 (Video Processing Message Format Compatibility Fix)
+- **Fixed Video Processing Status Updates**:
+  - Added support for handling different message formats from the processing service
+  - Fixed field name mapping between received messages and expected format (`video_id` → `videoId`, `progress_percent` → `progress`, `current_stage` → `stage`)
+  - Enhanced video lookup to work with both database IDs and YouTube IDs
+  - Improved error handling for messages with missing video IDs
+  - Added logging to better diagnose processing status issues
+  - Fixed topic configuration to correctly connect to Google Cloud Pub/Sub
+  - Added configurable model type selection via environment variable GCP_PROCESSING_MODEL_TYPE
+
 ### 2025-04-08 (WebSocket Connection Management and UI Improvements)
 - **Fixed WebSocket Connection Leak**:
   - Relocated VideoProcessingProvider to App.tsx to prevent multiple connections
