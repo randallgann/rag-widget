@@ -653,6 +653,9 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
       
       // After processing is initiated, refresh the channel details
       await fetchChannelDetails();
+      
+      // Clear selected videos to prevent reprocessing
+      setSelectedVideos(new Set());
     } catch (error: any) {
       logger.error('Error processing selected videos', error);
       

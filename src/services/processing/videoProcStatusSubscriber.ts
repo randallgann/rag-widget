@@ -109,7 +109,14 @@ export class VideoProcStatusSubscriber extends EventEmitter {
    */
   private async handleMessage(message: Message) {
     try {
-      const data = JSON.parse(Buffer.from(message.data).toString());
+      // Parse the message data
+      const messageStr = Buffer.from(message.data).toString();
+      logger.debug(`Raw message data: ${messageStr}`);
+      
+      const data = JSON.parse(messageStr);
+      
+      // Log the exact structure of the incoming message for debugging
+      logger.debug('Parsed message data structure:', JSON.stringify(data, null, 2));
       
       // Map the incoming message format to the expected StatusMessage format
       const statusUpdate: StatusMessage = {
@@ -142,10 +149,11 @@ export class VideoProcStatusSubscriber extends EventEmitter {
       
       // Acknowledge the message
       message.ack();
-    } catch (error) {
-      logger.error('Error processing status message:', error);
-      // Negative acknowledgment - message will be redelivered
-      message.nack();
+    } catch (error: any) {
+      logger.error(`Error processing status message: ${error.message}`);
+      logger.error(`Message data: ${Buffer.from(message.data).toString()}`);
+      // Acknowledge the message to prevent infinite redelivery of problematic messages
+      message.ack();
     }
   }
   
@@ -156,19 +164,38 @@ export class VideoProcStatusSubscriber extends EventEmitter {
     try {
       const { videoId, status, progress, stage, error } = statusUpdate;
       
-      // First try to find video by database ID
-      let video = await Video.findByPk(videoId);
+      let video;
       
-      // If not found, try to find by YouTube ID
+      // Check if videoId is a valid UUID (database ID)
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(videoId);
+      
+      if (isUUID) {
+        // If it's a valid UUID, try to find by database ID
+        try {
+          video = await Video.findByPk(videoId);
+          if (video) {
+            logger.info(`Found video by database ID: ${videoId}`);
+          }
+        } catch (err: any) {
+          logger.error(`Error looking up video by database ID: ${err.message}`);
+        }
+      }
+      
+      // If not found or not a UUID, try to find by YouTube ID
       if (!video) {
-        video = await Video.findOne({ where: { youtubeId: videoId } });
-        
-        if (!video) {
-          logger.warn(`Video not found for status update. Tried database ID and YouTube ID: ${videoId}`);
+        try {
+          video = await Video.findOne({ where: { youtubeId: videoId } });
+          
+          if (video) {
+            logger.info(`Found video by YouTube ID: ${videoId}, Database ID: ${video.id}`);
+          } else {
+            logger.warn(`Video not found for status update. Tried YouTube ID: ${videoId}`);
+            return;
+          }
+        } catch (err: any) {
+          logger.error(`Error looking up video by YouTube ID: ${err.message}`);
           return;
         }
-        
-        logger.info(`Found video by YouTube ID: ${videoId}, Database ID: ${video.id}`);
       }
       
       // Map status to database enum

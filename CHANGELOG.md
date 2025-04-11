@@ -10,15 +10,22 @@ Each entry should include:
 
 ## Changes
 
-### 2025-04-11 (Video Processing Message Format Compatibility Fix)
+### 2025-04-11 (Video Processing Message Format Compatibility Fix and UI Improvements)
 - **Fixed Video Processing Status Updates**:
   - Added support for handling different message formats from the processing service
   - Fixed field name mapping between received messages and expected format (`video_id` → `videoId`, `progress_percent` → `progress`, `current_stage` → `stage`)
   - Enhanced video lookup to work with both database IDs and YouTube IDs
-  - Improved error handling for messages with missing video IDs
-  - Added logging to better diagnose processing status issues
+  - Fixed UUID validation to prevent database errors when using YouTube IDs
+  - Added proper error handling to safely process messages with invalid formats
+  - Improved debug logging to capture raw message data for troubleshooting
+  - Added acknowledgment for error cases to prevent message redelivery loops
   - Fixed topic configuration to correctly connect to Google Cloud Pub/Sub
   - Added configurable model type selection via environment variable GCP_PROCESSING_MODEL_TYPE
+
+- **Fixed Channel Details UI Issues**:
+  - Fixed issue where completed videos remained in the selected videos state
+  - Added clearing of selected videos after processing to prevent reprocessing of completed videos
+  - Improved user experience by removing completed videos from selection interface
 
 ### 2025-04-08 (WebSocket Connection Management and UI Improvements)
 - **Fixed WebSocket Connection Leak**:
