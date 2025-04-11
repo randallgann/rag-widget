@@ -192,43 +192,47 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
     setProcessingVideos(prev => {
       if (!prev[videoId]) return prev;
       
-      // If the status is completed or failed, keep it in state temporarily before removing
+      // If the status is completed or failed, update state and keep it permanently
       if (status.processingStatus === 'completed' || status.processingStatus === 'failed') {
-        console.log(`Video ${videoId} ${status.processingStatus}. Keeping in state briefly before removing.`);
+        console.log(`Video ${videoId} ${status.processingStatus}. Updating with final state.`);
         
-        // First update the state with the final status
+        // Update the state with the final status
         const updatedState = {
           ...prev,
           [videoId]: {
             ...prev[videoId],
             ...status,
             processingLastUpdated: status.processingLastUpdated || new Date(),
-            // Add a flag to indicate this is the final state before removal
+            // Add a flag to indicate this is the final state (for temporary visual effects)
             finalState: true
           }
         };
         
-        // Schedule removal after a delay to ensure UI updates
+        // After 5 seconds, change finalState to false to stop animation, but keep the video in state
         setTimeout(() => {
-          console.log(`Removing ${status.processingStatus} video ${videoId} from processing state after delay`);
+          console.log(`Keeping ${status.processingStatus} video ${videoId} in state, removing animation`);
           setProcessingVideos(current => {
-            const newState = { ...current };
-            if (newState[videoId]) {
-              delete newState[videoId];
-              // Persist the updated state to localStorage if needed
-              try {
-                if (Object.keys(newState).length > 0) {
-                  localStorage.setItem(VIDEO_PROCESSING_STORAGE_KEY, JSON.stringify(newState));
-                } else {
-                  localStorage.removeItem(VIDEO_PROCESSING_STORAGE_KEY);
-                }
-              } catch (error) {
-                console.error('Error saving updated processing videos to localStorage:', error);
+            // Only update if the video is still in state
+            if (!current[videoId]) return current;
+            
+            const newState = {
+              ...current,
+              [videoId]: {
+                ...current[videoId],
+                finalState: false  // Just turn off animation, but keep the video status
               }
+            };
+            
+            // Persist the updated state to localStorage
+            try {
+              localStorage.setItem(VIDEO_PROCESSING_STORAGE_KEY, JSON.stringify(newState));
+            } catch (error) {
+              console.error('Error saving updated processing videos to localStorage:', error);
             }
+            
             return newState;
           });
-        }, 5000); // Keep in state for 5 seconds to ensure UI updates
+        }, 5000); // Keep animation for 5 seconds
         
         return updatedState;
       }

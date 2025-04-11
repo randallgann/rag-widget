@@ -10,18 +10,27 @@ Each entry should include:
 
 ## Changes
 
-### 2025-04-08 (WebSocket Connection Management Improvements)
+### 2025-04-08 (WebSocket Connection Management and UI Improvements)
 - **Fixed WebSocket Connection Leak**:
   - Relocated VideoProcessingProvider to App.tsx to prevent multiple connections
   - Enhanced WebSocket cleanup logic to properly close connections in all states
   - Added unique identifiers for WebSocket connections to enable better tracking
-  - Implemented delayed removal of completed/failed videos to ensure UI updates
+  - Implemented permanent storage of completed/failed videos in state to maintain persistent status
   - Added comprehensive debugging tools for WebSocket connection monitoring
   - Created browser console testing utilities for status update simulation
   - Added visual debug panel in development environment for real-time connection stats
   - Enhanced status update logging for better visibility of completion events
   - Added detailed documentation on WebSocket architecture and testing procedures
-  - Fixed issue where UI wouldn't update after final status message
+  - Fixed issue where UI would revert to "processing" status after completion animation
+  - Modified animation handling to maintain final status while removing temporary animation effects
+
+- **Improved Video Status UI**:
+  - Enhanced completed video appearance with green background
+  - Replaced checkbox with checkmark icon for completed videos
+  - Changed "Reprocess" button to "Remove" button (red) for completed videos
+  - Made completed videos non-selectable in the selection interface
+  - Modified "Select all" checkbox to exclude completed videos
+  - Improved visual distinction between processing, completed, and pending videos
 
 ### 2025-04-07 (Video Processing UI Robustness Improvements)
 - **Enhanced Video Processing UI Robustness**:

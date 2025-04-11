@@ -83,7 +83,8 @@ export const VideoProcessingStatus: React.FC<VideoProcessingStatusProps> = ({
         className={isFinalState ? 'transition-all animate-pulse duration-500' : ''}
       >
         {processingStatus}
-        {isFinalState && (processingStatus === 'completed' ? ' ✓' : processingStatus === 'failed' ? ' ✗' : '')}
+        {/* Always show the indicators for completed/failed statuses, but only animate when finalState is true */}
+        {(processingStatus === 'completed' ? ' ✓' : processingStatus === 'failed' ? ' ✗' : '')}
       </Badge>
       
       {processingStatus === 'processing' && (

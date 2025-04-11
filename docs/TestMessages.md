@@ -120,10 +120,11 @@ gcloud pubsub topics publish video-processing-requests --message='{
     "timestamp": "04/02/2025",
     "video": {
       "id": "your-video-db-id",
-      "url": "https://www.youtube.com/watch?v=AqJnK9Dh-eQ",
+      "url": "https://www.youtube.com/watch?v=YrHXuX6IZ4M",
       "title": "Your Video Title",
       "duration": "PT1H30M15S"
     },
+    "model_type": "fast",
     "channel": {
       "id": "your-channel-db-id",
       "name": "Your Channel Name"
