@@ -148,14 +148,8 @@ const getProxiedThumbnailUrl = (url: string): string => {
   return url;
 };
 
-// Create a wrapper component to provide the VideoProcessingContext
-const ChannelDetailPageWithProvider: React.FC<ChannelDetailPageProps> = (props) => {
-  return (
-    <VideoProcessingProvider>
-      <ChannelDetailPage {...props} />
-    </VideoProcessingProvider>
-  );
-};
+// The VideoProcessingProvider has been moved to App.tsx
+// to prevent multiple WebSocket connections
 
 const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetch, user: initialUser }) => {
   const { channelId } = useParams<{ channelId: string }>();
@@ -713,11 +707,13 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   const totalPages = Math.ceil(filteredVideos.length / pageSize);
   const paginatedVideos = filteredVideos.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Get list of selectable videos (non-processing) for the current page
+  // Get list of selectable videos (non-processing and non-completed) for the current page
   const selectableVideosOnPage = paginatedVideos.filter(video => {
     const isProcessing = video.processingStatus === 'processing' || 
                          processingVideos[video.id]?.processingStatus === 'processing';
-    return !isProcessing;
+    const isCompleted = video.processingStatus === 'completed' || 
+                        processingVideos[video.id]?.processingStatus === 'completed';
+    return !isProcessing && !isCompleted;
   });
 
   // Check if all selectable videos on the current page are selected
@@ -987,14 +983,23 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
                 return (
                   <TableRow 
                     key={video.id}
-                    className={isProcessing ? 'bg-blue-50 dark:bg-blue-900/20' : ''}
+                    className={isProcessing ? 'bg-blue-50 dark:bg-blue-900/20' : 
+                               video.processingStatus === 'completed' ? 'bg-green-50 dark:bg-green-900/20' : ''}
                   >
                     <TableCell>
-                      <Checkbox
-                        checked={selectedVideos.has(video.id)}
-                        onChange={() => handleVideoSelection(video.id)}
-                        disabled={isProcessing}
-                      />
+                      {video.processingStatus === 'completed' ? (
+                        <div className="w-4 h-4 flex items-center justify-center text-green-500">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <Checkbox
+                          checked={selectedVideos.has(video.id)}
+                          onChange={() => handleVideoSelection(video.id)}
+                          disabled={isProcessing || (video.processingStatus as string) === 'completed'}
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-3">
@@ -1035,14 +1040,28 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
-                        <Button 
-                          color="blue"
-                          disabled={isProcessing}
-                          onClick={() => {
-                            // Individual video processing or reset
-                            if (video.processingStatus === 'completed' || video.processingStatus === 'failed') {
-                              handleResetVideoProcessing(video.id);
-                            } else {
+                        {video.processingStatus === 'completed' ? (
+                          <Button 
+                            color="red"
+                            onClick={() => {
+                              // Visual feedback before implementing actual removal
+                              alert(`Remove video ${video.id} functionality to be implemented`);
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        ) : video.processingStatus === 'failed' ? (
+                          <Button 
+                            color="blue"
+                            onClick={() => handleResetVideoProcessing(video.id)}
+                          >
+                            Reprocess
+                          </Button>
+                        ) : (
+                          <Button 
+                            color="blue"
+                            disabled={isProcessing}
+                            onClick={() => {
                               // Process this single video
                               if (!selectedVideos.has(video.id)) {
                                 setSelectedVideos(prev => {
@@ -1052,11 +1071,11 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
                                 });
                               }
                               handleProcessSelectedVideos();
-                            }
-                          }}
-                        >
-                          {video.processingStatus === 'completed' || video.processingStatus === 'failed' ? 'Reprocess' : 'Process'}
-                        </Button>
+                            }}
+                          >
+                            Process
+                          </Button>
+                        )}
                         <Button 
                           color="zinc"
                           onClick={() => {
@@ -1161,4 +1180,4 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   );
 };
 
-export default ChannelDetailPageWithProvider;
+export default ChannelDetailPage;

@@ -4,14 +4,14 @@ Use these gcloud commands to manually test the video processing status updates. 
 
 ## Video ID to Test
 ```
-0d6edf33-89c4-4125-867a-c29bb0188538
+545b5984-f3f8-4b1e-a788-7835f39b627f
 ```
 
 ## Starting a Processing Job
 
 ```bash
 gcloud pubsub topics publish video-processing-status --message='{
-  "videoId": "0d6edf33-89c4-4125-867a-c29bb0188538",
+  "videoId": "545b5984-f3f8-4b1e-a788-7835f39b627f",
   "jobId": "test-job-123",
   "status": "started",
   "progress": 0,
@@ -24,7 +24,7 @@ gcloud pubsub topics publish video-processing-status --message='{
 
 ```bash
 gcloud pubsub topics publish video-processing-status --message='{
-  "videoId": "0d6edf33-89c4-4125-867a-c29bb0188538",
+  "videoId": "545b5984-f3f8-4b1e-a788-7835f39b627f",
   "jobId": "test-job-123",
   "status": "processing",
   "progress": 25,
@@ -37,7 +37,7 @@ gcloud pubsub topics publish video-processing-status --message='{
 
 ```bash
 gcloud pubsub topics publish video-processing-status --message='{
-  "videoId": "0d6edf33-89c4-4125-867a-c29bb0188538",
+  "videoId": "545b5984-f3f8-4b1e-a788-7835f39b627f",
   "jobId": "test-job-123",
   "status": "processing",
   "progress": 40,
@@ -50,7 +50,7 @@ gcloud pubsub topics publish video-processing-status --message='{
 
 ```bash
 gcloud pubsub topics publish video-processing-status --message='{
-  "videoId": "0d6edf33-89c4-4125-867a-c29bb0188538",
+  "videoId": "545b5984-f3f8-4b1e-a788-7835f39b627f",
   "jobId": "test-job-123",
   "status": "processing",
   "progress": 60,
@@ -63,7 +63,7 @@ gcloud pubsub topics publish video-processing-status --message='{
 
 ```bash
 gcloud pubsub topics publish video-processing-status --message='{
-  "videoId": "0d6edf33-89c4-4125-867a-c29bb0188538",
+  "videoId": "545b5984-f3f8-4b1e-a788-7835f39b627f",
   "jobId": "test-job-123",
   "status": "processing",
   "progress": 80,
@@ -76,7 +76,7 @@ gcloud pubsub topics publish video-processing-status --message='{
 
 ```bash
 gcloud pubsub topics publish video-processing-status --message='{
-  "videoId": "0d6edf33-89c4-4125-867a-c29bb0188538",
+  "videoId": "545b5984-f3f8-4b1e-a788-7835f39b627f",
   "jobId": "test-job-123",
   "status": "processing",
   "progress": 95,
@@ -89,7 +89,7 @@ gcloud pubsub topics publish video-processing-status --message='{
 
 ```bash
 gcloud pubsub topics publish video-processing-status --message='{
-  "videoId": "0d6edf33-89c4-4125-867a-c29bb0188538",
+  "videoId": "545b5984-f3f8-4b1e-a788-7835f39b627f",
   "jobId": "test-job-123",
   "status": "completed",
   "progress": 100,
@@ -102,7 +102,7 @@ gcloud pubsub topics publish video-processing-status --message='{
 
 ```bash
 gcloud pubsub topics publish video-processing-status --message='{
-  "videoId": "0d6edf33-89c4-4125-867a-c29bb0188538",
+  "videoId": "545b5984-f3f8-4b1e-a788-7835f39b627f",
   "jobId": "test-job-123",
   "status": "failed",
   "progress": 45,
@@ -120,10 +120,11 @@ gcloud pubsub topics publish video-processing-requests --message='{
     "timestamp": "04/02/2025",
     "video": {
       "id": "your-video-db-id",
-      "url": "https://www.youtube.com/watch?v=AqJnK9Dh-eQ",
+      "url": "https://www.youtube.com/watch?v=YrHXuX6IZ4M",
       "title": "Your Video Title",
       "duration": "PT1H30M15S"
     },
+    "model_type": "fast",
     "channel": {
       "id": "your-channel-db-id",
       "name": "Your Channel Name"

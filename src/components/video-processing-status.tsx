@@ -61,6 +61,9 @@ export const VideoProcessingStatus: React.FC<VideoProcessingStatusProps> = ({
     processingStage: initialStage,
   };
   
+  // Check if this is a final state (completed/failed but still in the processing state)
+  const isFinalState = videoStatus.finalState === true;
+  
   const { 
     processingStatus, 
     processingProgress, 
@@ -77,8 +80,11 @@ export const VideoProcessingStatus: React.FC<VideoProcessingStatusProps> = ({
           processingStatus === 'processing' ? 'blue' : 
           processingStatus === 'failed' ? 'red' : 'yellow'
         }
+        className={isFinalState ? 'transition-all animate-pulse duration-500' : ''}
       >
         {processingStatus}
+        {/* Always show the indicators for completed/failed statuses, but only animate when finalState is true */}
+        {(processingStatus === 'completed' ? ' ✓' : processingStatus === 'failed' ? ' ✗' : '')}
       </Badge>
       
       {processingStatus === 'processing' && (
