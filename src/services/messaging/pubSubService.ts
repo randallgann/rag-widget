@@ -88,6 +88,7 @@ export class PubSubService {
     user: {
       id: string;
     };
+    model_type?: string;
   }): Promise<string> {
     try {
       // Ensure client is initialized
@@ -106,6 +107,8 @@ export class PubSubService {
         jobId,
         timestamp,
         ...videoData,
+        // Set default model_type to "fast" if not provided
+        model_type: videoData.model_type || "fast",
         storage: {
           outputBucket: config.gcp.storage.bucket,
           outputPrefix: `channels/${videoData.channel.id}/videos/${videoData.video.id}/`

@@ -54,6 +54,9 @@ interface Config {
       enabled: boolean;
       serviceAccountKeySecret: string;
     };
+    processing: {
+      defaultModelType: string;
+    };
   };
 }
 
@@ -107,6 +110,9 @@ export const config: Config = {
     secretManager: {
       enabled: process.env.GCP_SECRET_MANAGER_ENABLED === 'true' && !process.env.GOOGLE_APPLICATION_CREDENTIALS,
       serviceAccountKeySecret: process.env.GCP_SERVICE_ACCOUNT_KEY_SECRET || 'rag-widget-service-account-key',
+    },
+    processing: {
+      defaultModelType: process.env.GCP_PROCESSING_MODEL_TYPE || 'fast',
     },
   },
 };

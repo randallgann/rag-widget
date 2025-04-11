@@ -2,6 +2,7 @@ import { pubSubService } from '../messaging/pubSubService';
 import { logger } from '../../config/logger';
 import Video from '../../db/models/Video';
 import Channel from '../../db/models/Channel';
+import { config } from '../../config/environment';
 
 /**
  * Service for handling video processing tasks
@@ -57,7 +58,7 @@ export class VideoProcessorService {
           const videoUrl = `https://www.youtube.com/watch?v=${video.youtubeId}`;
           
           // Log the values being used for processing
-          logger.info(`Processing video - ID: ${video.id}, YouTube ID: ${video.youtubeId}, Channel ID: ${video.channel.id}, User ID: ${video.channel.userId}`);
+          logger.info(`Processing video - ID: ${video.id}, YouTube ID: ${video.youtubeId}, Channel ID: ${video.channel.id}, User ID: ${video.channel.userId}, Model Type: ${config.gcp.processing.defaultModelType}`);
           
           // Publish message to Pub/Sub
           await pubSubService.publishVideoProcessingMessage({
@@ -73,7 +74,8 @@ export class VideoProcessorService {
             },
             user: {
               id: video.channel.userId
-            }
+            },
+            model_type: config.gcp.processing.defaultModelType
           });
           
           // Update video status to processing
