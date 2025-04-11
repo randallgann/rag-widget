@@ -12,6 +12,8 @@ interface VideoProcessingContextType {
   updateProcessingStatus: (videoId: string, status: Partial<VideoProcessingStatus>) => void;
   // Function to clear stale processing videos (videos that are no longer processing)
   clearStaleProcessingVideos: (videoIds?: string[]) => void;
+  // Function to deselect completed videos in the database
+  deselectCompletedVideos: (videoIds: string[]) => Promise<boolean>;
 }
 
 export interface VideoProcessingStatus {
@@ -195,6 +197,32 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
       // If the status is completed or failed, update state and keep it permanently
       if (status.processingStatus === 'completed' || status.processingStatus === 'failed') {
         console.log(`Video ${videoId} ${status.processingStatus}. Updating with final state.`);
+        
+        // Make API call to deselect the video if it completed successfully
+        if (status.processingStatus === 'completed') {
+          // Use a separate function to avoid blocking the state update
+          (async () => {
+            try {
+              console.log(`Auto-deselecting completed video ${videoId}`);
+              const response = await fetch(`/api/videos/${videoId}/select`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                credentials: 'include', // Important for auth cookies
+                body: JSON.stringify({ selectedForProcessing: false })
+              });
+              
+              if (response.ok) {
+                console.log(`Successfully deselected completed video ${videoId}`);
+              } else {
+                console.error(`Failed to deselect completed video ${videoId}:`, await response.text());
+              }
+            } catch (error) {
+              console.error(`Error deselecting completed video ${videoId}:`, error);
+            }
+          })();
+        }
         
         // Update the state with the final status
         const updatedState = {
@@ -474,12 +502,44 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
     }
   }, [socket]);
 
+  // Function to deselect completed videos in the database
+  const deselectCompletedVideos = async (videoIds: string[]): Promise<boolean> => {
+    if (!videoIds || videoIds.length === 0) return false;
+    
+    try {
+      console.log(`Batch deselecting ${videoIds.length} completed videos`);
+      const response = await fetch('/api/videos/select-batch', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include', // Important for auth cookies
+        body: JSON.stringify({
+          videoIds,
+          selectedForProcessing: false
+        })
+      });
+      
+      if (response.ok) {
+        console.log(`Successfully deselected ${videoIds.length} completed videos`);
+        return true;
+      } else {
+        console.error(`Failed to batch deselect completed videos:`, await response.text());
+        return false;
+      }
+    } catch (error) {
+      console.error(`Error deselecting completed videos:`, error);
+      return false;
+    }
+  };
+
   // Value to be provided to consuming components
   const value = {
     processingVideos,
     registerProcessingVideo,
     updateProcessingStatus,
-    clearStaleProcessingVideos
+    clearStaleProcessingVideos,
+    deselectCompletedVideos
   };
   
   // Add direct access to the context for testing in development
