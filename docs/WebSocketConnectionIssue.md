@@ -1,240 +1,228 @@
-# WebSocket Connection Leak Issue
+# WebSocket Connection Issue Analysis
 
-## Problem Statement
+## Problem Description
+The channel details page has an issue where video processing status updates are not properly displayed:
+1. Initial update to 5% shows in the UI
+2. Subsequent updates don't appear, though API logs show status updates being sent
+3. Upon page refresh, a new status (e.g., 20%) appears but doesn't continue updating
+4. Components flash/re-render when messages are received (observable in DevTools) but UI doesn't update
+5. No console logs are visible despite multiple logging statements in the code
 
-The RAG Widget application is experiencing a WebSocket connection leak. When users interact with the channel detail page, multiple WebSocket connections are being established and not properly cleaned up. Logs show messages like:
+## Root Cause Investigation
 
-```
-New WebSocket connection established. Total connections: 1
-New WebSocket connection established. Total connections: 2
-New WebSocket connection established. Total connections: 3
-New WebSocket connection established. Total connections: 4
-```
+### Component Tree Analysis
+Looking at the application structure reveals potential issues with the VideoProcessingContext:
 
-This results in several issues:
+1. **Multiple Context Provider Imports**:
+   - App.tsx: `import { VideoProcessingProvider } from '../contexts/VideoProcessingContext';`
+   - detail.tsx: `import { VideoProcessingProvider, useVideoProcessing } from '../../contexts/VideoProcessingContext';`
 
-1. **Memory leaks**: Each connection consumes resources that are not being properly released
-2. **UI synchronization issues**: Status updates (particularly completion statuses) sometimes don't appear in the UI until page refresh
-3. **Unnecessary server load**: Multiple active connections receive the same messages, wasting bandwidth
-4. **Potential instability**: As connections accumulate, the application may become unstable
+2. **Provider Hierarchy**:
+   - VideoProcessingProvider was moved to App.tsx (line 619) to prevent multiple WebSocket connections (mentioned in comment on line 151 of detail.tsx)
+   - However, detail.tsx still imports VideoProcessingProvider and useVideoProcessing
 
-## Root Cause Analysis
+3. **Console Logs**:
+   - Many console.log statements exist in VideoProcessingContext
+   - Logs appear for Dashboard but not Channel Details page
 
-After reviewing the code, we've identified several potential causes for the WebSocket connection leak:
+### WebSocket Message Flow
 
-### 1. Multiple Provider Instances
+1. **Server Side** (working correctly):
+   - videoProcStatusSubscriber.ts receives updates via PubSub
+   - Updates get emitted as events with fields like videoId, processingStatus, processingProgress
+   - statusController.ts listens for these events and broadcasts to WebSocket clients
+   - Server logs confirm messages are being sent with updated progress percentages
 
-- The `VideoProcessingProvider` is wrapped around each `ChannelDetailPage` component
-- If the channel detail page remounts multiple times, or if it's included in multiple routes, this could create multiple WebSocket connections
+2. **Client Side** (problematic):
+   - VideoProcessingContext.tsx establishes WebSocket connection
+   - Messages are received, normalized, and should update React state
+   - Components like VideoProcessingStatus.tsx read from this state to render UI
+   - The fact that components flash in DevTools suggests messages are being received
 
-```tsx
-const ChannelDetailPageWithProvider: React.FC<ChannelDetailPageProps> = (props) => {
-  return (
-    <VideoProcessingProvider>
-      <ChannelDetailPage {...props} />
-    </VideoProcessingProvider>
-  );
-};
-```
+### State Management
 
-### 2. Incomplete Cleanup in useEffect
+1. **State Updates**:
+   - VideoProcessingContext maintains a `processingVideos` state object
+   - Updates happen in `updateProcessingStatus` function
+   - State is persisted to localStorage
 
-The WebSocket cleanup logic in `VideoProcessingContext.tsx` has potential issues:
+2. **Field Normalization**:
+   - Attempts to normalize message fields with different names (processingStatus vs status)
+   - This normalization may not be correctly handling all cases
 
-```tsx
-// Clean up on unmount
-return () => {
-  if (socket && (socket as WebSocket).readyState === WebSocket.OPEN) {
-    (socket as WebSocket).close();
-  }
-};
-```
+## Action Items Checklist
 
-Issues with this code:
-- The cleanup function is indented incorrectly (may be a code linting issue)
-- It only closes the socket if it's in OPEN state, but not if it's in CONNECTING state
-- There's a type assertion that may be masking issues
+1. **Fix Context Hierarchy**:
+   - [ ] Remove VideoProcessingProvider import from detail.tsx if not used
+   - [ ] Ensure only one VideoProcessingProvider exists in the entire app (in App.tsx)
+   - [ ] Verify that channels/detail.tsx only imports and uses useVideoProcessing
 
-### 3. Reconnection Logic Issues
+2. **Add Debug Logging**:
+   - [ ] Add explicit console.log in the VideoProcessingStatus component:
+     ```jsx
+     // In VideoProcessingStatus.tsx
+     useEffect(() => {
+       console.log(`[DEBUG][${videoId}] Status: ${processingStatus}, Progress: ${processingProgress}`);
+     }, [videoId, processingStatus, processingProgress]);
+     ```
 
-The reconnection logic includes complex state management:
+3. **Fix Field Normalization**:
+   - [ ] Enhance the normalization in VideoProcessingContext.tsx:
+     ```jsx
+     // Ensure correct mapping between different message formats
+     const normalizedUpdate = {
+       videoId: statusUpdate.videoId,
+       processingStatus: statusUpdate.processingStatus || statusUpdate.status,
+       processingProgress: typeof statusUpdate.processingProgress === 'number' 
+         ? statusUpdate.processingProgress 
+         : (typeof statusUpdate.progress === 'number' ? statusUpdate.progress : 0),
+       // ... other fields
+     };
+     ```
 
-```tsx
-if (!isReconnecting) {
-  setIsReconnecting(true);
-  setTimeout(() => {
-    console.log('Attempting to reconnect WebSocket...');
-    setIsReconnecting(false);
-  }, 5000);
-}
-```
+4. **Check localStorage Persistence**:
+   - [ ] Clear localStorage and test to see if stale state might be persisting:
+     ```js
+     localStorage.removeItem('rag-widget-processing-videos');
+     ```
 
-This could lead to race conditions where new connections are established before old ones complete their lifecycle.
+5. **Inspect WebSocket Connection**:
+   - [ ] Use browser DevTools Network tab to verify WebSocket connection is active
+   - [ ] Check if messages are actually arriving by adding a WebSocket message handler:
+     ```jsx
+     // In App.tsx, add temporary debug code
+     useEffect(() => {
+       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+       const wsUrl = `${wsProtocol}//${window.location.host}/api/status-updates`;
+       const debugWs = new WebSocket(wsUrl);
+       
+       debugWs.onmessage = (event) => {
+         console.log('[DEBUG WS MESSAGE]', event.data);
+       };
+       
+       return () => debugWs.close();
+     }, []);
+     ```
 
-### 4. Authentication/Loading Races
+6. **Check React Re-Rendering**:
+   - [ ] Add a key prop to the VideoProcessingStatus component to force re-render:
+     ```jsx
+     <VideoProcessingStatus 
+       key={`${videoId}-${Date.now()}`} // Force re-render on each render cycle
+       videoId={video.id}
+       initialStatus={video.processingStatus}
+       initialProgress={video.processingProgress}
+       initialStage={video.processingStage}
+     />
+     ```
 
-The logs show 401 authentication errors occurring at the same time as WebSocket connections:
+7. **Verify Module Bundling**:
+   - [ ] Check if there might be multiple instances of the context due to bundling issues
+   - [ ] Verify that React is properly shared between components
 
-```
-warn: GET /api/channels/17430419-6d3c-4ad2-82f8-31b12f1e8f74 - No authHeader or no bearer found
-info: New WebSocket connection established. Total connections: 1
-warn: GET /api/channels/17430419-6d3c-4ad2-82f8-31b12f1e8f74 - No authHeader or no bearer found
-info: New WebSocket connection established. Total connections: 2
-```
+8. **Test Simple Solution First**:
+   - [ ] Try a simplified approach by bypassing the context and directly updating the component:
+     ```jsx
+     // In the video component, add direct WebSocket connection
+     useEffect(() => {
+       const ws = new WebSocket('ws://localhost:3001/api/status-updates');
+       ws.onmessage = (event) => {
+         const data = JSON.parse(event.data);
+         if (data.videoId === videoId) {
+           console.log('Direct update:', data);
+           // Update local state
+         }
+       };
+       return () => ws.close();
+     }, [videoId]);
+     ```
 
-This suggests component remounting during auth state changes, potentially creating new providers/connections.
+## Technical Analysis
 
-## Completion Status Not Updating UI Issue
+### VideoProcessingContext WebSocket Setup
+The context establishes a WebSocket connection and handles messages:
 
-Additionally, there's an issue with "completed" status updates not being reflected in the UI. In `updateProcessingStatus`, items are completely removed from state when completed:
-
-```tsx
-// If the status is completed or failed, we remove it from active processing
-if (status.processingStatus === 'completed' || status.processingStatus === 'failed') {
-  const newState = { ...prev };
-  delete newState[videoId];
-  return newState;
-}
-```
-
-This removes them from `processingVideos` without updating the UI with the final status.
-
-## Proposed Solutions
-
-### 1. Move Provider Higher in Component Tree
-
-Place the `VideoProcessingProvider` at the application level (in App.tsx) rather than at the channel detail page level to ensure only one provider instance exists:
-
-```tsx
-// In App.tsx
-return (
-  <AuthProvider>
-    <VideoProcessingProvider>
-      <Router>
-        {/* Routes */}
-      </Router>
-    </VideoProcessingProvider>
-  </AuthProvider>
-);
-```
-
-### 2. Improve WebSocket Cleanup
-
-Enhance the cleanup logic to handle all WebSocket states and ensure proper cleanup:
-
-```tsx
-return () => {
-  if (socket) {
-    console.log(`Cleaning up WebSocket connection (state: ${socket.readyState})`);
-    // Close regardless of state
-    socket.close();
-    setSocket(null);
-  }
-};
-```
-
-### 3. Add Connection IDs and Logging
-
-Add unique IDs to each WebSocket connection for better tracking:
-
-```tsx
-// On the server
-wss.on('connection', (ws: WebSocket) => {
-  const connectionId = generateUniqueId();
-  (ws as any).connectionId = connectionId;
+```typescript
+// Setup WebSocket for real-time status updates
+useEffect(() => {
+  if (socket || isReconnecting) return;
   
-  logger.info(`WebSocket connection ${connectionId} established. Total: ${connections.length}`);
-  // Rest of the code...
-});
-```
-
-### 4. Modify Completed/Failed State Handling
-
-Change how completed/failed statuses are handled to ensure the UI updates:
-
-```tsx
-// If the status is completed or failed, keep it briefly before removing
-if (status.processingStatus === 'completed' || status.processingStatus === 'failed') {
-  // Update the state to show completion/failure
-  const updatedState = {
-    ...prev,
-    [videoId]: {
-      ...prev[videoId],
-      ...status,
-      processingLastUpdated: status.processingLastUpdated || new Date()
-    }
+  // Connect to WebSocket
+  const connectWebSocket = () => {
+    // Create WebSocket connection
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/api/status-updates`;
+    
+    console.log(`Connecting to WebSocket at ${wsUrl}`);
+    const newSocket = new WebSocket(wsUrl);
+    // ...message handling logic
   };
   
-  // Schedule removal after a brief delay to allow UI to update
-  setTimeout(() => {
-    setProcessingVideos(current => {
-      const nextState = { ...current };
-      delete nextState[videoId];
-      return nextState;
-    });
-  }, 5000);
-  
-  return updatedState;
-}
+  connectWebSocket();
+}, [socket, isReconnecting]);
 ```
 
-### 5. Add Debugging Tools
+### Server-Side WebSocket Broadcasting
+The server broadcasts updates to all connected clients:
 
-Add more verbose logging and debugging capabilities to track WebSocket lifecycle:
-
-```tsx
-// In VideoProcessingContext.tsx
-newSocket.addEventListener('open', (event) => {
-  console.log(`WebSocket connected (ID: ${socketId})`);
-  // Rest of code...
-});
-
-// Track all socket state changes
-if (process.env.NODE_ENV !== 'production') {
-  ['open', 'close', 'error', 'message'].forEach(evt => {
-    newSocket.addEventListener(evt, () => {
-      console.log(`WebSocket ${socketId} state: ${getReadyStateString(newSocket.readyState)}`);
-    });
+```typescript
+// Set up event listener for status updates from videoProcStatusSubscriber
+videoProcStatusSubscriber.on('statusUpdate', (statusUpdate) => {
+  // Broadcast status update to all connected WebSocket clients
+  const payload = JSON.stringify({
+    ...statusUpdate,
+    serverTimestamp: new Date().toISOString()
   });
-}
+  
+  // Check for completed or failed statuses to log them more prominently
+  if (statusUpdate.processingStatus === 'completed' || statusUpdate.processingStatus === 'failed') {
+    logger.info(`Broadcasting ${statusUpdate.processingStatus.toUpperCase()} status for video ${statusUpdate.videoId} to ${connections.length} clients:`, statusUpdate);
+  } else {
+    logger.debug(`Broadcasting status update for video ${statusUpdate.videoId} to ${connections.length} clients:`, statusUpdate);
+  }
+  
+  let sentCount = 0;
+  connections.forEach(client => {
+    const connectionId = (client as any).connectionId || 'unknown';
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+      sentCount++;
+    } else {
+      // Log connections that are not in OPEN state
+      logger.debug(`Skipping send to connection ${connectionId} - state: ${getWebSocketStateString(client.readyState)}`);
+    }
+  });
+});
 ```
 
-## Implementation Plan
+### Status Update Normalization
+The context attempts to normalize different message formats:
 
-1. Add more detailed logging to precisely identify when and why multiple connections are being created
-2. Fix the VideoProcessingProvider placement in the component hierarchy
-3. Enhance WebSocket cleanup logic to ensure proper connection termination
-4. Modify the completed/failed state handling to ensure UI updates
-5. Add uniquely identifiable connection tracking
-6. Implement comprehensive testing to verify the fixes
-
-This approach addresses both the WebSocket connection leak and the UI update issues while maintaining the real-time nature of the status updates.
-
-## Manual Testing in Browser Console
-
-You can now test the WebSocket connection and status updates directly from the browser console. The following commands are available:
-
-```javascript
-// Get information about the WebSocket connections
-window.__VIDEO_PROCESSING_DEBUG__
-
-// Get current processing videos
-window.__VIDEO_PROCESSING_CONTEXT__.getStatus()
-
-// Simulate a status update for a video
-// Replace "your-video-id" with an actual video ID
-window.__VIDEO_PROCESSING_DEBUG__.simulateMessage("your-video-id", "completed")  // Status can be "processing", "completed", or "failed"
-
-// Test connection leak fix by counting active connections
-// Note: This should always be 1 after our fix
-window.__VIDEO_PROCESSING_DEBUG__.connections.active
+```typescript
+// Format might vary between server implementations
+// Make sure we have all required fields in the expected format
+const normalizedUpdate = {
+  videoId: statusUpdate.videoId,
+  processingStatus: statusUpdate.processingStatus,
+  // Handle different progress field names
+  processingProgress: statusUpdate.processingProgress !== undefined ? 
+    statusUpdate.processingProgress : (statusUpdate.progress || 0),
+  // Handle different stage field names  
+  processingStage: statusUpdate.processingStage !== undefined ? 
+    statusUpdate.processingStage : statusUpdate.stage,
+  // Handle different error field names
+  processingError: statusUpdate.processingError !== undefined ? 
+    statusUpdate.processingError : statusUpdate.error,
+  // Use server timestamp if available
+  processingLastUpdated: statusUpdate.serverTimestamp ? 
+    new Date(statusUpdate.serverTimestamp) : new Date(),
+  // Pass through estimated time remaining
+  estimatedTimeRemaining: statusUpdate.estimatedTimeRemaining
+};
 ```
 
-To validate that our fix works:
+## Conclusion
 
-1. Navigate to the channel detail page
-2. Open the browser console (F12 or Ctrl+Shift+J)
-3. Navigate to different pages and back to the channel detail page
-4. Check the connection count - it should remain at 1
-5. The debug panel should show the socket state and stats
-6. Test status updates using the simulateMessage function
+The most likely cause is that the VideoProcessingContext is not properly shared between App.tsx and the channel details component. When the fix to move VideoProcessingProvider to App.tsx was implemented, it may have created a situation where there are multiple instances of the context or where the state updates aren't properly propagating to child components.
+
+Focus on ensuring there is only one VideoProcessingProvider in the app and that all components properly consume from it.

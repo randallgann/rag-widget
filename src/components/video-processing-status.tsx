@@ -18,7 +18,30 @@ export const VideoProcessingStatus: React.FC<VideoProcessingStatusProps> = ({
   initialStage,
   className = '',
 }) => {
+  // Force an alert to see if this component is rendering at all
+  // if (videoId.includes('FIRST')) {
+  //   alert(`VideoProcessingStatus rendering for first video: ${videoId}`);
+  // }
+  
+  // Try different console methods
+  // console.warn(`[WARNING] VideoProcessingStatus rendering for: ${videoId}`);
+  // console.error(`[ERROR] VideoProcessingStatus check for: ${videoId}`);
+  
+  // Check if we're getting the context
   const { processingVideos } = useVideoProcessing();
+  
+  // Add debug logging with useEffect to track status changes
+  React.useEffect(() => {
+    // Get the current status from context or initial props
+    const status = processingVideos[videoId] ? 
+      processingVideos[videoId].processingStatus : initialStatus;
+    
+    // Get the current progress from context or initial props
+    const progress = processingVideos[videoId] ? 
+      processingVideos[videoId].processingProgress : initialProgress;
+
+    // console.log(`[DEBUG][${videoId}] Status: ${status}, Progress: ${progress}`);
+  }, [videoId, processingVideos, initialStatus, initialProgress]);
   
   // Helper to format time remaining
   const formatTimeRemaining = (seconds?: number) => {
@@ -61,6 +84,15 @@ export const VideoProcessingStatus: React.FC<VideoProcessingStatusProps> = ({
     processingStage: initialStage,
   };
   
+  //Debug logging - uncomment if needed
+  // console.log(`VideoProcessingStatus for ${videoId}:`, {
+  //   fromContext: processingVideos[videoId] ? true : false,
+  //   status: videoStatus.processingStatus,
+  //   progress: videoStatus.processingProgress,
+  //   initialStatus,
+  //   initialProgress
+  // });
+  
   // Check if this is a final state (completed/failed but still in the processing state)
   const isFinalState = videoStatus.finalState === true;
   
@@ -92,11 +124,11 @@ export const VideoProcessingStatus: React.FC<VideoProcessingStatusProps> = ({
           <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
             <div 
               className="bg-blue-600 h-2 rounded-full transition-all duration-500" 
-              style={{ width: `${processingProgress || 0}%` }}
+              style={{ width: `${Math.max(0, Math.min(100, processingProgress || 0))}%` }}
             />
           </div>
           <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-            <span>{processingProgress || 0}%</span>
+            <span>{Math.max(0, Math.min(100, processingProgress || 0))}%</span>
             {processingStage && (
               <span className="text-blue-500">{getStageName(processingStage)}</span>
             )}

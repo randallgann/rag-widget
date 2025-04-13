@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { UserProfileResponse, ChannelResponse, VideoResponse } from '../../types/api';
-import { VideoProcessingProvider, useVideoProcessing } from '../../contexts/VideoProcessingContext';
+import { useVideoProcessing } from '../../contexts/VideoProcessingContext';
 import { VideoProcessingStatus } from '../../components/video-processing-status';
 import { SidebarLayout } from '../../components/sidebar-layout';
 import { 
@@ -168,6 +168,11 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
 
   // Get video processing status context
   const { processingVideos, registerProcessingVideo, clearStaleProcessingVideos, deselectCompletedVideos } = useVideoProcessing();
+  
+  // Add direct console debug to check if context is working
+  // console.warn('CHANNEL DETAIL: processingVideos from context:', processingVideos);
+  // Force an alert to see if this code is running
+  // alert(`Channel Detail loaded with ${Object.keys(processingVideos).length} videos in processing context`);
 
   // Create a simple logger for the channel detail page
   const logger = {
@@ -185,10 +190,10 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
     fetchChannelDetails();
   }, [channelId]);
   
-  // Clean up any completed videos that might still be marked as selected
+  // Clean up any completed videos and deselect non-processing videos on page load
   useEffect(() => {
     if (videos.length > 0) {
-      // Find completed videos that are still marked as selected
+      // 1. Find completed videos that are still marked as selected
       const completedButSelectedIds = videos
         .filter(video => 
           video.processingStatus === 'completed' && 
@@ -196,37 +201,79 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
         )
         .map(video => video.id);
       
-      if (completedButSelectedIds.length > 0) {
-        logger.debug(`Found ${completedButSelectedIds.length} completed videos still marked as selected, cleaning up...`);
-        deselectCompletedVideos(completedButSelectedIds);
+      // 2. Find all videos that are selected but not processing (these should be deselected on page load)
+      const selectedNonProcessingIds = videos
+        .filter(video => 
+          video.selectedForProcessing === true && 
+          video.processingStatus !== 'processing'
+        )
+        .map(video => video.id);
+      
+      // 3. Combine the lists, removing duplicates
+      const idsToDeselect = Array.from(new Set([...completedButSelectedIds, ...selectedNonProcessingIds]));
+      
+      if (idsToDeselect.length > 0) {
+        logger.debug(`Deselecting ${completedButSelectedIds.length} completed videos and ${selectedNonProcessingIds.length - completedButSelectedIds.length} non-processing videos that were still selected...`);
+        
+        // Use our own deselection function with proper authentication
+        (async () => {
+          try {
+            const response = await authenticatedFetch('/api/videos/select-batch', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                videoIds: idsToDeselect,
+                selectedForProcessing: false
+              })
+            });
+            
+            if (response.ok) {
+              logger.debug(`Successfully deselected ${idsToDeselect.length} videos in database`);
+            } else {
+              logger.error(`Failed to deselect videos in database: ${response.status} ${response.statusText}`);
+            }
+          } catch (error) {
+            logger.error('Error deselecting videos in database:', error);
+          }
+        })();
+        
+        // Also clear them from local state immediately for better UI responsiveness
+        setSelectedVideos(prev => {
+          const newSelected = new Set(prev);
+          idsToDeselect.forEach(id => newSelected.delete(id));
+          return newSelected;
+        });
       }
     }
   }, [videos]);
   
-  // Initialize selected videos from the server data when videos are loaded, 
-  // but exclude completed videos even if they're marked as selected
+  // Initialize selected videos from the server data when videos are loaded
+  // Only include videos that are actively processing - all other selections are cleared on page load
   useEffect(() => {
     if (videos.length > 0) {
       const initiallySelected = new Set<string>();
       
-      // Only add videos that are both selected AND not completed
+      // ONLY add videos that are in 'processing' state
       videos.forEach(video => {
-        if (video.selectedForProcessing && video.processingStatus !== 'completed') {
+        if (video.processingStatus === 'processing') {
           initiallySelected.add(video.id);
         }
       });
       
       setSelectedVideos(initiallySelected);
       
-      // Log the difference between what's selected in DB vs. our filtered selection
+      // Log details about what would have been selected vs what we actually selected
       const selectedInDb = videos.filter(v => v.selectedForProcessing).length;
-      const completedAndSelected = videos.filter(v => 
-        v.selectedForProcessing && v.processingStatus === 'completed'
+      const processingVideosCount = videos.filter(v => v.processingStatus === 'processing').length;
+      const nonProcessingSelected = videos.filter(v => 
+        v.selectedForProcessing && v.processingStatus !== 'processing'
       ).length;
       
-      logger.debug(`Initialized ${initiallySelected.size} selectable videos from server data`);
-      if (completedAndSelected > 0) {
-        logger.debug(`Filtered out ${completedAndSelected} completed videos that were still marked as selected in the database`);
+      logger.debug(`Initialized ${initiallySelected.size} processing videos as selected (out of ${selectedInDb} marked as selected in DB)`);
+      if (nonProcessingSelected > 0) {
+        logger.debug(`Filtered out ${nonProcessingSelected} videos that were selected but not actively processing`);
       }
     }
   }, [videos]);
@@ -250,7 +297,63 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
         // Check their actual status from the server (just once when component mounts)
         await checkProcessingStatus(processingVideoIds);
         
-        // clearStaleProcessingVideos will be called after we refresh the videos list
+        // Check for stale processing videos (processing for too long)
+        // Threshold for how long a video can be in processing state before considered stale (3 hours)
+        const staleThresholdMs = 3 * 60 * 60 * 1000; 
+        const now = new Date().getTime();
+        
+        // Find videos that have been processing for too long
+        const staleVideos = videos.filter(video => {
+          if (video.processingStatus !== 'processing') return false;
+          
+          // If we have a lastUpdated timestamp, use it to check staleness
+          if (video.processingLastUpdated) {
+            const lastUpdated = new Date(video.processingLastUpdated).getTime();
+            return (now - lastUpdated) > staleThresholdMs;
+          }
+          
+          // If there's no timestamp but status is processing, consider it stale too
+          return true;
+        });
+        
+        if (staleVideos.length > 0) {
+          logger.debug(`Found ${staleVideos.length} stale processing videos, resetting their status...`);
+          
+          // Reset each stale video
+          for (const video of staleVideos) {
+            try {
+              const response = await authenticatedFetch(`/api/videos/${video.id}/reset-processing`, {
+                method: 'PUT'
+              });
+              
+              if (response.ok) {
+                logger.debug(`Successfully reset stale processing status for video ${video.id}`);
+                // Clear it from the processing context
+                clearStaleProcessingVideos([video.id]);
+                
+                // Also remove it from selected videos state
+                setSelectedVideos(prevSelected => {
+                  const newSelected = new Set(prevSelected);
+                  newSelected.delete(video.id);
+                  return newSelected;
+                });
+              } else {
+                // Try to get more detailed error message
+                try {
+                  const errorData = await response.json();
+                  logger.error(`Failed to reset stale video ${video.id}: ${errorData.message || response.statusText}`);
+                } catch {
+                  logger.error(`Failed to reset stale video ${video.id}: ${response.status} ${response.statusText}`);
+                }
+              }
+            } catch (resetError) {
+              logger.error(`Error while trying to reset stale processing video ${video.id}:`, resetError);
+            }
+          }
+          
+          // Refresh the videos list to update UI
+          await fetchChannelDetails();
+        }
       } catch (error: any) {
         logger.error('Error checking stale processing videos:', error);
       }
@@ -606,15 +709,21 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   // Function to process selected videos
   const handleProcessSelectedVideos = async () => {
     try {
-      if (selectedVideos.size === 0) {
-        alert('Please select at least one video to process');
+      // Filter out completed videos from selection
+      const nonCompletedSelectedIds = Array.from(selectedVideos).filter(id => {
+        const video = videos.find(v => v.id === id);
+        return video && video.processingStatus !== 'completed';
+      });
+      
+      if (nonCompletedSelectedIds.length === 0) {
+        alert('Please select at least one video to process. All currently selected videos are already completed.');
         return;
       }
 
-      logger.debug(`Processing ${selectedVideos.size} selected videos`);
+      logger.debug(`Processing ${nonCompletedSelectedIds.length} selected videos (excluding completed)`);
       
-      // Convert Set to Array for the API request
-      const videoIds = Array.from(selectedVideos);
+      // Use the filtered array for the API request
+      const videoIds = nonCompletedSelectedIds;
       
       // Filter out already completed videos
       const completedVideoIds = videoIds.filter(id => {
@@ -1014,18 +1123,35 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
           <Text color="subtle">
-            {selectedVideos.size} video{selectedVideos.size !== 1 ? 's' : ''} selected
+            {/* Filter out any completed videos from the count, even if they're in the selectedVideos set */}
+            {(() => {
+              const filteredCount = Array.from(selectedVideos).filter(id => {
+                const video = videos.find(v => v.id === id);
+                return video && video.processingStatus !== 'completed';
+              }).length;
+              return `${filteredCount} video${filteredCount !== 1 ? 's' : ''} selected`;
+            })()}
           </Text>
           <Button 
             color="blue" 
             disabled={
-              selectedVideos.size === 0 || 
-              // Disable if ALL selected videos are already processing
-              Array.from(selectedVideos).every(id => {
-                const isProcessing = videos.find(v => v.id === id)?.processingStatus === 'processing' || 
-                                    processingVideos[id]?.processingStatus === 'processing';
-                return isProcessing;
-              })
+              (() => {
+                // Filter out completed videos first
+                const nonCompletedSelectedIds = Array.from(selectedVideos).filter(id => {
+                  const video = videos.find(v => v.id === id);
+                  return video && video.processingStatus !== 'completed';
+                });
+                
+                // No selectable videos
+                if (nonCompletedSelectedIds.length === 0) return true;
+                
+                // Disable if ALL selected videos (that aren't completed) are already processing
+                return nonCompletedSelectedIds.every(id => {
+                  const isProcessing = videos.find(v => v.id === id)?.processingStatus === 'processing' || 
+                                     processingVideos[id]?.processingStatus === 'processing';
+                  return isProcessing;
+                });
+              })()
             }
             onClick={handleProcessSelectedVideos}
           >

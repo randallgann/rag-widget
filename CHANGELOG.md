@@ -10,6 +10,31 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-13 (Stale Video Processing Detection and Reset)
+- **Fixed Issues with Stuck Video Processing, Selection Persistence, and Authentication**:
+  - Added automatic detection and reset of videos stuck in processing state for 3+ hours
+  - Modified reset-processing API endpoint to handle videos in "processing" state, not just "completed" or "failed"
+  - Fixed selection persistence issue by automatically clearing selections between page visits
+  - Enhanced selection state to only maintain videos that are actively processing
+  - Fixed 401 Unauthorized errors when deselecting videos in batch operations
+  - Replaced unauthenticated API calls with properly authenticated requests
+  - Implemented auto-deselection of all non-processing videos on page load
+  - Added server-side deselection of non-processing videos when loading the channel details page
+  - Enhanced reset functionality to automatically uncheck (deselect) videos when they're reset
+  - Fixed issue where stale videos remained checked in the UI after being reset
+  - Fixed issue where completed videos were incorrectly counted in "selected videos" count
+  - Improved video selection count to always exclude completed videos, even if marked as selected
+  - Enhanced the "Process Selected Videos" button to only consider non-completed videos
+  - Updated processing logic to filter out completed videos before sending to the API
+  - Added staleness detection logic with 3-hour threshold to prevent accidental resets of active processing
+  - Implemented status recovery for stale videos after application restarts or extended inactivity
+  - Enhanced client-side error handling for reset-processing operations
+  - Added detailed logging for stale video detection and reset attempts
+  - Added automatic cleanup mechanism in VideoProcessingContext to remove stale states every 5 minutes
+  - Fixed infinite loop error caused by dependency cycles in state management
+  - Improved error messages when a video can't be reset due to being actively processed
+  - Added localStorage cleanup on page reload to prevent persistent stale states
+
 ### 2025-04-11 (Video Processing Message Format Compatibility Fix and UI Improvements)
 - **Fixed Video Processing Status Updates**:
   - Added support for handling different message formats from the processing service

@@ -191,8 +191,16 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
 
   // Function to update the status of a processing video
   const updateProcessingStatus = (videoId: string, status: Partial<VideoProcessingStatus>) => {
+    // Log the update attempt for debugging
+    console.log(`updateProcessingStatus called for ${videoId} with:`, status);
+    
     setProcessingVideos(prev => {
-      if (!prev[videoId]) return prev;
+      if (!prev[videoId]) {
+        console.log(`Video ${videoId} not found in processing state, ignoring update`);
+        return prev;
+      }
+      
+      console.log(`Updating state for ${videoId}, current:`, prev[videoId]);
       
       // If the status is completed or failed, update state and keep it permanently
       if (status.processingStatus === 'completed' || status.processingStatus === 'failed') {
@@ -266,15 +274,30 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
       }
       
       // For normal updates, just update the state
-      return {
-        ...prev,
-        [videoId]: {
-          ...prev[videoId],
-          ...status,
-          // Automatically update last update time if not provided
-          processingLastUpdated: status.processingLastUpdated || new Date()
-        }
+      // Explicitly handle each field to ensure consistent updates
+      const updatedVideo = {
+        ...prev[videoId],
+        ...status,
+        // Make sure processingProgress is always a number
+        processingProgress: typeof status.processingProgress === 'number' ? 
+          status.processingProgress : prev[videoId].processingProgress,
+        // Automatically update last update time if not provided
+        processingLastUpdated: status.processingLastUpdated || new Date()
       };
+      
+      console.log(`State update for ${videoId} - Before:`, {
+        oldProgress: prev[videoId].processingProgress,
+        newProgress: updatedVideo.processingProgress,
+        oldStatus: prev[videoId].processingStatus,
+        newStatus: updatedVideo.processingStatus
+      });
+      
+      const result = {
+        ...prev,
+        [videoId]: updatedVideo
+      };
+      
+      return result;
     });
   };
   
@@ -298,12 +321,20 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
       
       setProcessingVideos(prev => {
         const newState = { ...prev };
+        const removedIds: string[] = [];
+        
         Object.entries(newState).forEach(([id, status]) => {
           if (!status.processingLastUpdated || 
               (now - status.processingLastUpdated.getTime() > staleThreshold)) {
             delete newState[id];
+            removedIds.push(id);
           }
         });
+        
+        if (removedIds.length > 0) {
+          console.log(`Removed ${removedIds.length} stale processing videos from context:`, removedIds);
+        }
+        
         return newState;
       });
     }
@@ -350,46 +381,102 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
       // Listen for status update messages
       newSocket.addEventListener('message', (event) => {
         try {
-          const statusUpdate = JSON.parse(event.data);
-          if (statusUpdate && statusUpdate.videoId) {
-            console.log(`Received status update for video ${statusUpdate.videoId} via WebSocket (ID: ${socketId}):`, statusUpdate);
-            
-            // Update debug info
-            if (process.env.NODE_ENV !== 'production') {
-              const isCompleted = statusUpdate.processingStatus === 'completed';
-              const isFailed = statusUpdate.processingStatus === 'failed';
-              
-              const updatedDebugInfo = {
-                ...debugInfo,
-                connections: {
-                  ...debugInfo.connections,
-                  lastMessage: new Date()
-                },
-                messages: {
-                  received: debugInfo.messages.received + 1,
-                  completedCount: isCompleted ? debugInfo.messages.completedCount + 1 : debugInfo.messages.completedCount,
-                  failedCount: isFailed ? debugInfo.messages.failedCount + 1 : debugInfo.messages.failedCount
-                }
-              };
-              setDebugInfo(updatedDebugInfo);
-              window.__VIDEO_PROCESSING_DEBUG__ = updatedDebugInfo;
-              
-              // Log more details for completed/failed messages
-              if (isCompleted || isFailed) {
-                console.log(`🚨 Received ${statusUpdate.processingStatus.toUpperCase()} status for video ${statusUpdate.videoId}`);
-                console.table({
-                  videoId: statusUpdate.videoId,
-                  status: statusUpdate.processingStatus,
-                  progress: statusUpdate.processingProgress,
-                  stage: statusUpdate.processingStage,
-                  timestamp: new Date().toISOString()
-                });
-              }
-            }
-            
-            // Update processing status
-            updateProcessingStatus(statusUpdate.videoId, statusUpdate);
+          const rawData = event.data;
+          console.log(`Raw WebSocket message received:`, rawData);
+          
+          const statusUpdate = JSON.parse(rawData);
+          
+          // First message might be a connection confirmation
+          if (statusUpdate.type === 'connection') {
+            console.log(`WebSocket connection confirmed (ID: ${statusUpdate.connectionId})`);
+            return;
           }
+          
+          // Ensure we have a valid videoId
+          if (!statusUpdate || !statusUpdate.videoId) {
+            console.warn(`Received WebSocket message without videoId:`, statusUpdate);
+            return;
+          }
+          
+          console.log(`Received status update for video ${statusUpdate.videoId} via WebSocket (ID: ${socketId}):`, statusUpdate);
+          
+          // Update debug info
+          if (process.env.NODE_ENV !== 'production') {
+            const isCompleted = statusUpdate.processingStatus === 'completed';
+            const isFailed = statusUpdate.processingStatus === 'failed';
+            
+            const updatedDebugInfo = {
+              ...debugInfo,
+              connections: {
+                ...debugInfo.connections,
+                lastMessage: new Date()
+              },
+              messages: {
+                received: debugInfo.messages.received + 1,
+                completedCount: isCompleted ? debugInfo.messages.completedCount + 1 : debugInfo.messages.completedCount,
+                failedCount: isFailed ? debugInfo.messages.failedCount + 1 : debugInfo.messages.failedCount
+              }
+            };
+            setDebugInfo(updatedDebugInfo);
+            window.__VIDEO_PROCESSING_DEBUG__ = updatedDebugInfo;
+            
+            // Log more details for completed/failed messages
+            if (isCompleted || isFailed) {
+              console.log(`🚨 Received ${statusUpdate.processingStatus.toUpperCase()} status for video ${statusUpdate.videoId}`);
+              console.table({
+                videoId: statusUpdate.videoId,
+                status: statusUpdate.processingStatus,
+                progress: statusUpdate.processingProgress,
+                stage: statusUpdate.processingStage,
+                timestamp: new Date().toISOString()
+              });
+            }
+          }
+          
+          // Format might vary between server implementations
+          // Make sure we have all required fields in the expected format
+          const normalizedUpdate = {
+            videoId: statusUpdate.videoId,
+            // Handle different status field names
+            processingStatus: statusUpdate.processingStatus !== undefined ? 
+              statusUpdate.processingStatus : statusUpdate.status,
+            // Handle different progress field names
+            processingProgress: statusUpdate.processingProgress !== undefined ? 
+              statusUpdate.processingProgress : (statusUpdate.progress || 0),
+            // Handle different stage field names  
+            processingStage: statusUpdate.processingStage !== undefined ? 
+              statusUpdate.processingStage : statusUpdate.stage,
+            // Handle different error field names
+            processingError: statusUpdate.processingError !== undefined ? 
+              statusUpdate.processingError : statusUpdate.error,
+            // Use server timestamp if available
+            processingLastUpdated: statusUpdate.serverTimestamp ? 
+              new Date(statusUpdate.serverTimestamp) : new Date(),
+            // Pass through estimated time remaining
+            estimatedTimeRemaining: statusUpdate.estimatedTimeRemaining
+          };
+          
+          // DEBUG: Always log the progress value to see if it's coming through
+          console.log(`Progress value for ${statusUpdate.videoId}: Original=${statusUpdate.progress || 'undefined'}, Processing=${statusUpdate.processingProgress || 'undefined'}, Normalized=${normalizedUpdate.processingProgress || 0}`);
+          
+          
+          console.log(`Normalized update for video ${normalizedUpdate.videoId}:`, normalizedUpdate);
+          
+          // Before updating, log the current state for comparison
+          if (processingVideos[normalizedUpdate.videoId]) {
+            const currentState = processingVideos[normalizedUpdate.videoId];
+            console.log(`COMPARING: Current state vs new state for ${normalizedUpdate.videoId}:`, {
+              currentProgress: currentState.processingProgress,
+              newProgress: normalizedUpdate.processingProgress,
+              currentStatus: currentState.processingStatus,
+              newStatus: normalizedUpdate.processingStatus,
+              willUpdate: currentState.processingProgress !== normalizedUpdate.processingProgress || 
+                         currentState.processingStatus !== normalizedUpdate.processingStatus
+            });
+          }
+
+          // Update processing status with normalized data
+          updateProcessingStatus(normalizedUpdate.videoId, normalizedUpdate);
         } catch (error: any) {
           console.error(`Error processing WebSocket message on socket ${socketId}:`, error);
           
@@ -501,6 +588,32 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
       // since it has access to the authenticatedFetch method
     }
   }, [socket]);
+  
+  // Set up a periodic cleanup for stale processing videos
+  useEffect(() => {
+    // Run cleanup every 5 minutes to prevent videos getting stuck in processing state
+    const cleanupInterval = 5 * 60 * 1000; // 5 minutes
+    
+    // Initial cleanup when component mounts (after a short delay to prevent React errors)
+    const initialCleanupTimeout = setTimeout(() => {
+      clearStaleProcessingVideos();
+    }, 1000);
+    
+    // Set up interval for regular cleanup
+    const intervalId = setInterval(() => {
+      // Only run if we have processing videos
+      if (Object.keys(processingVideos).length > 0) {
+        console.log('Running periodic cleanup of stale processing videos...');
+        clearStaleProcessingVideos();
+      }
+    }, cleanupInterval);
+    
+    // Clean up interval on unmount
+    return () => {
+      clearTimeout(initialCleanupTimeout);
+      clearInterval(intervalId);
+    };
+  }, []); // Empty dependency array to run only once on mount
 
   // Function to deselect completed videos in the database
   const deselectCompletedVideos = async (videoIds: string[]): Promise<boolean> => {

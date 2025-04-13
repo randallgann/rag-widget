@@ -466,18 +466,38 @@ export const resetVideoProcessing = async (req: Request, res: Response, next: Ne
       throw new AppError('You do not have permission to reset this video', 403);
     }
     
-    // Only allow resetting videos that are in completed or failed state
-    if (video.processingStatus !== 'completed' && video.processingStatus !== 'failed') {
-      throw new AppError(`Cannot reset video in '${video.processingStatus}' state. Only completed or failed videos can be reset.`, 400);
+    // Allow resetting videos that are in completed, failed, or stale processing state
+    if (video.processingStatus !== 'completed' && video.processingStatus !== 'failed' && video.processingStatus !== 'processing') {
+      throw new AppError(`Cannot reset video in '${video.processingStatus}' state. Only completed, failed, or processing videos can be reset.`, 400);
     }
     
-    // Update the video to reset processing state
+    // If video is in processing state, check if it's stale (stuck)
+    if (video.processingStatus === 'processing') {
+      const staleThresholdMs = 3 * 60 * 60 * 1000; // 3 hours
+      const now = new Date().getTime();
+      
+      // If the video has a last updated timestamp and it's recent, don't allow reset
+      if (video.processingLastUpdated) {
+        const lastUpdated = new Date(video.processingLastUpdated).getTime();
+        const isStale = (now - lastUpdated) > staleThresholdMs;
+        
+        if (!isStale) {
+          throw new AppError('Cannot reset a video that is actively being processed. Please wait until processing completes or try again later.', 400);
+        }
+        
+        // Log that we're allowing reset of a stale processing video
+        logger.info(`Allowing reset of stale processing video ${id} (last updated ${Math.round((now - lastUpdated) / (60 * 60 * 1000))} hours ago)`);
+      }
+    }
+    
+    // Update the video to reset processing state and uncheck it
     await video.update({
       processingStatus: 'pending',
       processingProgress: 0,
       processingError: null,
       processingStage: null,
-      processingLastUpdated: null
+      processingLastUpdated: null,
+      selectedForProcessing: false // Uncheck the video when resetting
     });
     
     logger.info(`Reset processing status for video ${id} to pending state`);
@@ -488,10 +508,11 @@ export const resetVideoProcessing = async (req: Request, res: Response, next: Ne
         video: {
           id: video.id,
           title: video.title,
-          processingStatus: 'pending'
+          processingStatus: 'pending',
+          selectedForProcessing: false
         }
       },
-      message: 'Video processing status has been reset'
+      message: 'Video processing status has been reset and video has been unchecked'
     });
   } catch (error: any) {
     logger.error('Reset video processing error:', error);
