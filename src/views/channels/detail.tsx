@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { UserProfileResponse, ChannelResponse, VideoResponse } from '../../types/api';
-import { useVideoProcessing } from '../../contexts/VideoProcessingContext';
+import { StatusChangeEvent, useVideoProcessing } from '../../contexts/VideoProcessingContext';
 import { VideoProcessingStatus } from '../../components/video-processing-status';
 import { SidebarLayout } from '../../components/sidebar-layout';
 import { 
@@ -167,7 +167,7 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Get video processing status context
-  const { processingVideos, registerProcessingVideo, clearStaleProcessingVideos, deselectCompletedVideos } = useVideoProcessing();
+  const { processingVideos, registerProcessingVideo, clearStaleProcessingVideos, deselectCompletedVideos, removeVideoFromContext, onStatusChange } = useVideoProcessing();
   
   // Add direct console debug to check if context is working
   // console.warn('CHANNEL DETAIL: processingVideos from context:', processingVideos);
@@ -189,6 +189,44 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   useEffect(() => {
     fetchChannelDetails();
   }, [channelId]);
+  
+  // Set up status change listener to update the videos when a video completes
+  useEffect(() => {
+    // This will be called when a video status changes to completed/failed
+    const handleStatusChange = (event: StatusChangeEvent) => {
+      if (event.newStatus === 'completed' || event.newStatus === 'failed') {
+        logger.debug(`Received status change to ${event.newStatus} for video ${event.videoId}`, event);
+        
+        // Find the video in our videos array and update its status
+        setVideos(currentVideos => {
+          return currentVideos.map(video => {
+            // Match by database ID or video ID
+            if (video.id === event.videoId || video.id === event.databaseId) {
+              logger.debug(`Updating video ${video.id} status to ${event.newStatus} in videos array`);
+              return {
+                ...video,
+                processingStatus: event.newStatus as 'completed' | 'failed' | 'processing' | 'pending',
+                processingProgress: event.newStatus === 'completed' ? 100 : video.processingProgress,
+                processingStage: event.newStatus === 'completed' ? 'complete' : 
+                                event.newStatus === 'failed' ? 'failed' : 
+                                video.processingStage,
+                processingLastUpdated: new Date().toISOString()
+              };
+            }
+            return video;
+          });
+        });
+      }
+    };
+    
+    // Register our status change listener
+    const unsubscribe = onStatusChange(handleStatusChange);
+    
+    // Cleanup function to unsubscribe when component unmounts
+    return () => {
+      unsubscribe();
+    };
+  }, [onStatusChange]);
   
   // Clean up any completed videos and deselect non-processing videos on page load
   useEffect(() => {
@@ -602,6 +640,19 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
         return;
       }
       
+      // Check if trying to remove a completed video
+      const isRemovingCompletedVideo = video.processingStatus === 'completed';
+      
+      if (isRemovingCompletedVideo) {
+        const confirmed = window.confirm(
+          `Are you sure you want to remove this processed video? All processed transcripts and data for this video will be removed.`
+        );
+        
+        if (!confirmed) {
+          return;
+        }
+      }
+      
       const response = await authenticatedFetch(`/api/videos/${videoId}/reset-processing`, {
         method: 'PUT'
       });
@@ -610,7 +661,28 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
         throw new Error(`Failed to reset processing status: ${response.status} ${response.statusText}`);
       }
       
+      // Note: When removing a completed video, we should also remove data from the vector database
+      // This functionality will be implemented server-side in the future
+      // The current reset-processing endpoint only resets the video status in the regular database
+      
+      /* 
+       * TODO: Future implementation for vector database cleanup
+       * This would involve adding code to the resetVideoProcessing controller function to:
+       * 1. Check if the video being reset was in 'completed' state
+       * 2. If so, delete all related vector embeddings:
+       *    - Execute SQL: DELETE FROM video_segments WHERE video_id = videoId;
+       *    - or use a VectorService/QueryService method like:
+       *      await vectorDbService.removeVideoEmbeddings(videoId);
+       */
+      
       logger.debug(`Successfully reset processing status for video ${videoId}`);
+      
+      // Remove the video from the processing context to ensure it doesn't show as completed
+      // This is crucial when removing completed videos
+      if (isRemovingCompletedVideo) {
+        logger.debug(`Removing video ${videoId} from processing context after reset`);
+        removeVideoFromContext(videoId);
+      }
       
       // Refresh videos to update UI
       await fetchChannelDetails();
@@ -709,38 +781,43 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
   // Function to process selected videos
   const handleProcessSelectedVideos = async () => {
     try {
-      // Filter out completed videos from selection
-      const nonCompletedSelectedIds = Array.from(selectedVideos).filter(id => {
+      // Filter out any non-pending videos from selection
+      const pendingSelectedIds = Array.from(selectedVideos).filter(id => {
         const video = videos.find(v => v.id === id);
-        return video && video.processingStatus !== 'completed';
+        // Check if video is in real-time processing state but not yet reflected in DB
+        const isProcessing = videos.find(v => v.id === id)?.processingStatus === 'processing' || 
+                           processingVideos[id]?.processingStatus === 'processing';
+        // Only include truly pending videos
+        return video && video.processingStatus === 'pending' && !isProcessing;
       });
       
-      if (nonCompletedSelectedIds.length === 0) {
-        alert('Please select at least one video to process. All currently selected videos are already completed.');
+      if (pendingSelectedIds.length === 0) {
+        alert('Please select at least one video to process. Only videos in pending state can be processed.');
         return;
       }
 
-      logger.debug(`Processing ${nonCompletedSelectedIds.length} selected videos (excluding completed)`);
+      logger.debug(`Processing ${pendingSelectedIds.length} selected videos (only pending videos)`);
       
       // Use the filtered array for the API request
-      const videoIds = nonCompletedSelectedIds;
+      const videoIds = pendingSelectedIds;
       
-      // Filter out already completed videos
+      // Our filtering above should already have removed any completed videos,
+      // but we'll double-check just to be safe
       const completedVideoIds = videoIds.filter(id => {
         const video = videos.find(v => v.id === id);
         return video?.processingStatus === 'completed' || 
                processingVideos[id]?.processingStatus === 'completed';
       });
       
-      // If we have any completed videos, deselect them first in the database
+      // If we have any completed videos (which shouldn't happen with our new filtering), deselect them
       if (completedVideoIds.length > 0) {
-        logger.debug(`Found ${completedVideoIds.length} already completed videos, deselecting them first`);
+        logger.debug(`Found ${completedVideoIds.length} already completed videos that slipped through, deselecting them`);
         await deselectCompletedVideos(completedVideoIds);
         
         // Remove completed videos from the list to process
         const remainingIds = videoIds.filter(id => !completedVideoIds.includes(id));
         if (remainingIds.length === 0) {
-          alert('All selected videos are already completed. Please select different videos to process.');
+          alert('No videos left to process after filtering completed videos. Please select different videos.');
           // Clear UI selections to match database state
           setSelectedVideos(new Set());
           return;
@@ -750,7 +827,8 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
         videoIds.push(...remainingIds);
       }
       
-      // Check if any of the remaining videos are already processing
+      // Our filtering above should already have removed any processing videos,
+      // but we'll double-check just to be safe
       const alreadyProcessingIds = videoIds.filter(id => {
         const isProcessing = videos.find(v => v.id === id)?.processingStatus === 'processing' || 
                             processingVideos[id]?.processingStatus === 'processing';
@@ -758,23 +836,17 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
       });
       
       if (alreadyProcessingIds.length > 0) {
-        logger.debug(`Found ${alreadyProcessingIds.length} videos already processing`);
+        logger.debug(`Found ${alreadyProcessingIds.length} videos already processing that slipped through our filters`);
         // Remove already processing videos from the list
         const filteredIds = videoIds.filter(id => !alreadyProcessingIds.includes(id));
         
         if (filteredIds.length === 0) {
-          alert('All selected videos are already processing.');
+          alert('No videos left to process after filtering videos already in processing.');
           return;
         }
         
-        const continueProcessing = window.confirm(
-          `${alreadyProcessingIds.length} out of ${videoIds.length} selected videos are already processing. Continue with processing the remaining ${filteredIds.length} videos?`
-        );
-        
-        if (!continueProcessing) return;
-        
-        // Proceed with the filtered list
-        logger.debug(`Continuing with ${filteredIds.length} non-processing videos`);
+        // Proceed with the filtered list without asking confirmation since we're already filtering
+        logger.debug(`Continuing with ${filteredIds.length} truly pending videos`);
         // Update the videoIds to only include non-processing videos
         videoIds.length = 0;
         videoIds.push(...filteredIds);
@@ -1123,11 +1195,14 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
           <Text color="subtle">
-            {/* Filter out any completed videos from the count, even if they're in the selectedVideos set */}
+            {/* Filter out any non-pending videos from the count, even if they're in the selectedVideos set */}
             {(() => {
               const filteredCount = Array.from(selectedVideos).filter(id => {
                 const video = videos.find(v => v.id === id);
-                return video && video.processingStatus !== 'completed';
+                // Only count videos that are in 'pending' state (not processing, completed, or failed)
+                const isProcessing = video?.processingStatus === 'processing' || 
+                                    processingVideos[id]?.processingStatus === 'processing';
+                return video && video.processingStatus === 'pending' && !isProcessing;
               }).length;
               return `${filteredCount} video${filteredCount !== 1 ? 's' : ''} selected`;
             })()}
@@ -1136,21 +1211,18 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
             color="blue" 
             disabled={
               (() => {
-                // Filter out completed videos first
-                const nonCompletedSelectedIds = Array.from(selectedVideos).filter(id => {
+                // Filter to only include pending videos
+                const pendingSelectedIds = Array.from(selectedVideos).filter(id => {
                   const video = videos.find(v => v.id === id);
-                  return video && video.processingStatus !== 'completed';
+                  // Check if video is in real-time processing state but not yet reflected in DB
+                  const isProcessing = videos.find(v => v.id === id)?.processingStatus === 'processing' || 
+                                     processingVideos[id]?.processingStatus === 'processing';
+                  // Only include truly pending videos
+                  return video && video.processingStatus === 'pending' && !isProcessing;
                 });
                 
                 // No selectable videos
-                if (nonCompletedSelectedIds.length === 0) return true;
-                
-                // Disable if ALL selected videos (that aren't completed) are already processing
-                return nonCompletedSelectedIds.every(id => {
-                  const isProcessing = videos.find(v => v.id === id)?.processingStatus === 'processing' || 
-                                     processingVideos[id]?.processingStatus === 'processing';
-                  return isProcessing;
-                });
+                return pendingSelectedIds.length === 0;
               })()
             }
             onClick={handleProcessSelectedVideos}
@@ -1186,18 +1258,25 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
             </TableHead>
             <TableBody>
               {paginatedVideos.map((video) => {
-                // Check if video is processing either from DB or from real-time context
+                // Check realtime status from both DB and context
+                const realTimeStatus = processingVideos[video.id]?.processingStatus || video.processingStatus;
+                
+                // Check if video is processing
                 const isProcessing = video.processingStatus === 'processing' || 
                                      processingVideos[video.id]?.processingStatus === 'processing';
+                
+                // Check if video is completed (from database or real-time context)
+                const isCompleted = video.processingStatus === 'completed' || 
+                                    processingVideos[video.id]?.processingStatus === 'completed';
                 
                 return (
                   <TableRow 
                     key={video.id}
                     className={isProcessing ? 'bg-blue-50 dark:bg-blue-900/20' : 
-                               video.processingStatus === 'completed' ? 'bg-green-50 dark:bg-green-900/20' : ''}
+                               isCompleted ? 'bg-green-50 dark:bg-green-900/20' : ''}
                   >
                     <TableCell>
-                      {video.processingStatus === 'completed' ? (
+                      {isCompleted ? (
                         <div className="w-4 h-4 flex items-center justify-center text-green-500">
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -1207,7 +1286,7 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
                         <Checkbox
                           checked={selectedVideos.has(video.id)}
                           onChange={() => handleVideoSelection(video.id)}
-                          disabled={isProcessing || (video.processingStatus as string) === 'completed'}
+                          disabled={isProcessing || isCompleted}
                         />
                       )}
                     </TableCell>
@@ -1250,17 +1329,14 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
-                        {video.processingStatus === 'completed' ? (
+                        {isCompleted ? (
                           <Button 
                             color="red"
-                            onClick={() => {
-                              // Visual feedback before implementing actual removal
-                              alert(`Remove video ${video.id} functionality to be implemented`);
-                            }}
+                            onClick={() => handleResetVideoProcessing(video.id)}
                           >
                             Remove
                           </Button>
-                        ) : video.processingStatus === 'failed' ? (
+                        ) : realTimeStatus === 'failed' ? (
                           <Button 
                             color="blue"
                             onClick={() => handleResetVideoProcessing(video.id)}

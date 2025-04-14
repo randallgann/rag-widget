@@ -14,6 +14,10 @@ interface VideoProcessingContextType {
   clearStaleProcessingVideos: (videoIds?: string[]) => void;
   // Function to deselect completed videos in the database
   deselectCompletedVideos: (videoIds: string[]) => Promise<boolean>;
+  // Function to completely remove a video from the processing context (for "Remove" action)
+  removeVideoFromContext: (videoId: string) => void;
+  // Function to subscribe to status change events
+  onStatusChange: (callback: (event: StatusChangeEvent) => void) => () => void;
 }
 
 export interface VideoProcessingStatus {
@@ -25,6 +29,17 @@ export interface VideoProcessingStatus {
   processingLastUpdated?: Date;
   estimatedTimeRemaining?: number;
   finalState?: boolean;  // Flag to indicate item is in final state before removal
+  // Additional identifiers to support multiple ID formats
+  databaseId?: string;   // Database UUID when available
+  youtubeId?: string;    // YouTube ID when available
+}
+
+export interface StatusChangeEvent {
+  videoId: string;
+  oldStatus?: string;
+  newStatus: string;
+  databaseId?: string;
+  youtubeId?: string;
 }
 
 const VideoProcessingContext = createContext<VideoProcessingContextType | undefined>(undefined);
@@ -128,6 +143,7 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
   const [processingVideos, setProcessingVideos] = useState<Record<string, VideoProcessingStatus>>({});
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [statusChangeCallbacks] = useState<Set<(event: StatusChangeEvent) => void>>(new Set());
   const [debugInfo, setDebugInfo] = useState<DebugInfo>(
     window.__VIDEO_PROCESSING_DEBUG__ || {
       connections: { count: 0, active: 0, ids: [] },
@@ -189,22 +205,116 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
     }));
   };
 
+  // Function to subscribe to status change events
+  const onStatusChange = (callback: (event: StatusChangeEvent) => void) => {
+    // Add the callback to our set
+    statusChangeCallbacks.add(callback);
+    
+    // Return a cleanup function to remove the callback
+    return () => {
+      statusChangeCallbacks.delete(callback);
+    };
+  };
+  
+  // Helper to notify all callbacks about a status change
+  const notifyStatusChange = (event: StatusChangeEvent) => {
+    statusChangeCallbacks.forEach(callback => {
+      try {
+        callback(event);
+      } catch (error) {
+        console.error('Error in status change callback:', error);
+      }
+    });
+  };
+
   // Function to update the status of a processing video
   const updateProcessingStatus = (videoId: string, status: Partial<VideoProcessingStatus>) => {
     // Log the update attempt for debugging
     console.log(`updateProcessingStatus called for ${videoId} with:`, status);
     
+    // Check if we have a database ID in the status update (from our enhanced WebSocket message)
+    const databaseId = status.databaseId;
+    
+    // If we have a database ID, use that instead of the videoId from the message
+    // This handles the case where videoId is a YouTube ID but we track by database UUID
+    const lookupId = databaseId || videoId;
+    
+    console.log(`Using lookup ID: ${lookupId} ${databaseId ? '(from databaseId)' : '(from videoId)'}`);
+    
     setProcessingVideos(prev => {
-      if (!prev[videoId]) {
-        console.log(`Video ${videoId} not found in processing state, ignoring update`);
+      // First try with the preferred ID (database UUID)
+      if (prev[lookupId]) {
+        console.log(`Found video in processing state with ID: ${lookupId}`);
+        
+        // Update using the database ID
+        const updatedVideo = {
+          ...prev[lookupId],
+          ...status,
+          // These properties might come from the original videoId
+          videoId: lookupId, // Keep the database ID as primary ID
+          // Store additional identifiers if available for future reference
+          youtubeId: status.youtubeId,
+          databaseId: databaseId,
+          // Make sure processingProgress is always a number
+          processingProgress: typeof status.processingProgress === 'number' ? 
+            status.processingProgress : prev[lookupId].processingProgress,
+          // Automatically update last update time if not provided
+          processingLastUpdated: status.processingLastUpdated || new Date()
+        };
+        
+        console.log(`Updating state for ${lookupId}, current:`, prev[lookupId]);
+        
+        return {
+          ...prev,
+          [lookupId]: updatedVideo
+        };
+      }
+      
+      // If not found with preferred ID, try alternative ID formats
+      // This is for backward compatibility and edge cases
+      if (!prev[lookupId]) {
+        // Check if we have any key in the state that corresponds to this video
+        // This could happen if we registered with different ID format
+        // e.g., registered with UUID but receiving updates with YouTube ID
+        
+        if (databaseId && prev[videoId]) {
+          // Case: we have prev[youtubeId] but received a message with databaseId
+          console.log(`Found video with original videoId ${videoId} instead of databaseId ${databaseId}`);
+          
+          const updatedVideo = {
+            ...prev[videoId],
+            ...status,
+            processingProgress: typeof status.processingProgress === 'number' ? 
+              status.processingProgress : prev[videoId].processingProgress,
+            processingLastUpdated: status.processingLastUpdated || new Date(),
+            youtubeId: status.youtubeId,
+            databaseId: databaseId
+          };
+          
+          return {
+            ...prev,
+            [videoId]: updatedVideo
+          };
+        }
+        
+        console.log(`Video ${lookupId} not found in processing state, ignoring update`);
         return prev;
       }
       
-      console.log(`Updating state for ${videoId}, current:`, prev[videoId]);
+      console.log(`Updating state for ${lookupId}, current:`, prev[lookupId]);
       
       // If the status is completed or failed, update state and keep it permanently
       if (status.processingStatus === 'completed' || status.processingStatus === 'failed') {
         console.log(`Video ${videoId} ${status.processingStatus}. Updating with final state.`);
+        
+        // Notify subscribers about the status change to completed/failed
+        notifyStatusChange({
+          videoId: lookupId,
+          oldStatus: prev[lookupId] ? (prev[lookupId] as VideoProcessingStatus).processingStatus : undefined,
+          newStatus: status.processingStatus as string,
+          databaseId: databaseId,
+          youtubeId: status.youtubeId
+        });
         
         // Make API call to deselect the video if it completed successfully
         if (status.processingStatus === 'completed') {
@@ -437,6 +547,9 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
           // Make sure we have all required fields in the expected format
           const normalizedUpdate = {
             videoId: statusUpdate.videoId,
+            // Include the database UUID and YouTube ID if available (from our enhanced server)
+            databaseId: statusUpdate.databaseId,
+            youtubeId: statusUpdate.youtubeId,
             // Handle different status field names
             processingStatus: statusUpdate.processingStatus !== undefined ? 
               statusUpdate.processingStatus : statusUpdate.status,
@@ -455,6 +568,9 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
             // Pass through estimated time remaining
             estimatedTimeRemaining: statusUpdate.estimatedTimeRemaining
           };
+          
+          // Log the IDs we're dealing with
+          console.log(`WebSocket message contains IDs - videoId: ${normalizedUpdate.videoId}, databaseId: ${normalizedUpdate.databaseId}, youtubeId: ${normalizedUpdate.youtubeId}`);
           
           // DEBUG: Always log the progress value to see if it's coming through
           console.log(`Progress value for ${statusUpdate.videoId}: Original=${statusUpdate.progress || 'undefined'}, Processing=${statusUpdate.processingProgress || 'undefined'}, Normalized=${normalizedUpdate.processingProgress || 0}`);
@@ -646,13 +762,62 @@ export const VideoProcessingProvider: React.FC<{ children: ReactNode }> = ({ chi
     }
   };
 
+  // Function to completely remove a video from the context when "Remove" is clicked
+  const removeVideoFromContext = (videoId: string) => {
+    console.log(`Removing video ${videoId} completely from processing context`);
+    
+    setProcessingVideos(prev => {
+      // Create a new state object without the specified video
+      const newState = { ...prev };
+      
+      // Check if this video exists in our state with this ID
+      if (newState[videoId]) {
+        delete newState[videoId];
+        console.log(`Deleted video ${videoId} from processing context`);
+      } else {
+        // Try to find the video by scanning all entries (in case it's tracked by a different ID)
+        let foundKey = null;
+        Object.entries(newState).forEach(([key, value]) => {
+          // Check if this entry matches our target video by database ID or YouTube ID
+          if ((value.databaseId && value.databaseId === videoId) || 
+              (value.youtubeId && value.youtubeId === videoId)) {
+            foundKey = key;
+          }
+        });
+        
+        if (foundKey) {
+          console.log(`Found video ${videoId} in context under key ${foundKey}, removing it`);
+          delete newState[foundKey];
+        } else {
+          console.log(`Video ${videoId} not found in processing context`);
+        }
+      }
+      
+      // Save the updated state to localStorage
+      try {
+        if (Object.keys(newState).length > 0) {
+          localStorage.setItem(VIDEO_PROCESSING_STORAGE_KEY, JSON.stringify(newState));
+        } else {
+          // If there are no videos left, remove the item from localStorage
+          localStorage.removeItem(VIDEO_PROCESSING_STORAGE_KEY);
+        }
+      } catch (error) {
+        console.error('Error updating localStorage after removing video:', error);
+      }
+      
+      return newState;
+    });
+  };
+
   // Value to be provided to consuming components
   const value = {
     processingVideos,
     registerProcessingVideo,
     updateProcessingStatus,
     clearStaleProcessingVideos,
-    deselectCompletedVideos
+    deselectCompletedVideos,
+    removeVideoFromContext,
+    onStatusChange
   };
   
   // Add direct access to the context for testing in development
