@@ -59,6 +59,13 @@ export const setupWebSocketServer = (server: Server) => {
   
   // Set up event listener for status updates from videoProcStatusSubscriber
   videoProcStatusSubscriber.on('statusUpdate', (statusUpdate) => {
+    // Log the IDs we're working with for debugging
+    const videoId = statusUpdate.videoId;
+    const databaseId = statusUpdate.databaseId;
+    const youtubeId = statusUpdate.youtubeId;
+    
+    logger.debug(`Processing status update with IDs - videoId: ${videoId}, databaseId: ${databaseId}, youtubeId: ${youtubeId}`);
+    
     // Broadcast status update to all connected WebSocket clients
     const payload = JSON.stringify({
       ...statusUpdate,
@@ -67,9 +74,9 @@ export const setupWebSocketServer = (server: Server) => {
     
     // Check for completed or failed statuses to log them more prominently
     if (statusUpdate.processingStatus === 'completed' || statusUpdate.processingStatus === 'failed') {
-      logger.info(`Broadcasting ${statusUpdate.processingStatus.toUpperCase()} status for video ${statusUpdate.videoId} to ${connections.length} clients:`, statusUpdate);
+      logger.info(`Broadcasting ${statusUpdate.processingStatus.toUpperCase()} status for video (DB ID: ${databaseId}, YouTube ID: ${youtubeId}) to ${connections.length} clients:`, statusUpdate);
     } else {
-      logger.debug(`Broadcasting status update for video ${statusUpdate.videoId} to ${connections.length} clients:`, statusUpdate);
+      logger.debug(`Broadcasting status update for video (DB ID: ${databaseId}, YouTube ID: ${youtubeId}) to ${connections.length} clients:`, statusUpdate);
     }
     
     let sentCount = 0;

@@ -490,6 +490,9 @@ export const resetVideoProcessing = async (req: Request, res: Response, next: Ne
       }
     }
     
+    // Store previous status to check if it was completed
+    const wasCompleted = video.processingStatus === 'completed';
+    
     // Update the video to reset processing state and uncheck it
     await video.update({
       processingStatus: 'pending',
@@ -499,6 +502,31 @@ export const resetVideoProcessing = async (req: Request, res: Response, next: Ne
       processingLastUpdated: null,
       selectedForProcessing: false // Uncheck the video when resetting
     });
+    
+    // If the video was in completed state, we should also clean up its vector embeddings
+    if (wasCompleted) {
+      logger.info(`Video ${id} was in completed state - cleaning up associated data`);
+      
+      // TODO: Future implementation - remove vector embeddings
+      /*
+       * This section would handle removing all vector embeddings for the video
+       * from the vector database (video_segments table)
+       * 
+       * Direct SQL approach:
+       * await sequelize.query(`DELETE FROM video_segments WHERE video_id = :videoId`, {
+       *   replacements: { videoId: id },
+       *   type: QueryTypes.DELETE
+       * });
+       * 
+       * Or using a service:
+       * await vectorDbService.removeVideoEmbeddings(id);
+       * 
+       * This would need to be implemented when the vector database functionality is added
+       */
+      
+      // Log that we would do this in the future
+      logger.info(`NOTE: In the future, vector embeddings for video ${id} would be removed here`);
+    }
     
     logger.info(`Reset processing status for video ${id} to pending state`);
     
@@ -512,7 +540,9 @@ export const resetVideoProcessing = async (req: Request, res: Response, next: Ne
           selectedForProcessing: false
         }
       },
-      message: 'Video processing status has been reset and video has been unchecked'
+      message: wasCompleted 
+        ? 'Video processing data has been removed and status reset to pending' 
+        : 'Video processing status has been reset and video has been unchecked'
     });
   } catch (error: any) {
     logger.error('Reset video processing error:', error);

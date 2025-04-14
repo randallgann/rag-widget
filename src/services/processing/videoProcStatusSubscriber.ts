@@ -254,9 +254,11 @@ export class VideoProcStatusSubscriber extends EventEmitter {
         }
       }
       
-      // Emit event for WebSocket to broadcast
+      // Emit event for WebSocket to broadcast - include both database ID and YouTube ID
       this.emit('statusUpdate', {
-        videoId,
+        videoId,  // Keep this for backward compatibility - this could be either a UUID or YouTube ID
+        youtubeId: video.youtubeId, // Always the YouTube ID
+        databaseId: video.id,       // Always the database UUID
         processingStatus,
         processingProgress: progress,
         processingStage: stage || null,
@@ -265,7 +267,7 @@ export class VideoProcStatusSubscriber extends EventEmitter {
         estimatedTimeRemaining
       });
       
-      logger.info(`Updated status for video ${videoId} to ${processingStatus} (${progress}%)`);
+      logger.info(`Updated status for video ${videoId} (DB ID: ${video.id}, YouTube ID: ${video.youtubeId}) to ${processingStatus} (${progress}%)`);
     } catch (error) {
       logger.error(`Error updating video status in database:`, error);
       throw error;

@@ -10,6 +10,53 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-14 (WebSocket ID Mismatch Fix and Video Removal Implementation)
+- **Fixed WebSocket Status Updates ID Mismatch**:
+  - Fixed issue where WebSocket status updates weren't being applied to videos in the UI due to ID mismatch
+  - Enhanced Pub/Sub subscriber to include both database UUID and YouTube ID in status updates
+  - Updated status controller to pass both IDs through WebSocket messages
+  - Modified VideoProcessingContext to properly identify videos using database IDs
+  - Added enhanced logging to track ID translation between systems
+  - Created detailed documentation explaining the ID mismatch issue
+  - Fixed real-time progress updates for video processing
+  - Implemented proper handling of both YouTube IDs and database UUIDs in the same system
+
+- **Fixed Persistent Video Status After Removal**:
+  - Fixed issue where removed videos would still show as "completed" after refresh
+  - Added `removeVideoFromContext` function to properly clear video status from context
+  - Implemented tracking and removal of videos by multiple ID types (UUID, YouTube ID)
+  - Added cleanup logic to ensure localStorage doesn't retain completed status
+  - Enhanced the reset process to fully clear all video status traces
+  - Ensured proper state synchronization between UI, context, and database
+  
+- **Fixed Selected Video Count to Only Include Pending Videos**:
+  - Modified selected video count to only include videos in "pending" state
+  - Fixed issue where processing videos were being counted in "videos selected" count
+  - Updated Process Selected Videos button to only consider truly pending videos
+  - Enhanced video filtering to check both database status and real-time WebSocket status
+  - Improved UX by only allowing pending videos to be processed
+  - Added consistent filtering across selection count, button state, and processing logic
+  
+- **Added Real-Time UI Updates for Video Completion**:
+  - Fixed issue where the video list UI wouldn't show completed state until page refresh
+  - Implemented status change event system in VideoProcessingContext
+  - Added onStatusChange API for subscribing to video status changes
+  - Enhanced ChannelDetailPage to update videos array when status changes to completed
+  - Added real-time update of UI to show green background and Remove button when completed
+  - Fixed inconsistency between WebSocket status and visual representation
+  - Improved user experience by showing immediate feedback when processing completes
+  - Fixed TypeScript errors by ensuring correct date/string type conversion
+
+### 2025-04-14 (Video Removal Implementation)
+- **Implemented Remove Functionality for Processed Videos**:
+  - Enhanced the "Remove" button on completed videos to properly reset processing status
+  - Added confirmation dialog before removing a processed video
+  - Added preparation for future vector database cleanup when removing videos
+  - Improved user messaging for completed video removal vs failed video reprocessing
+  - Modified resetVideoProcessing controller to detect when a completed video is being reset
+  - Added commented code blocks for future vector database integration
+  - Enhanced server response messages to be more specific about the action taken
+
 ### 2025-04-13 (Stale Video Processing Detection and Reset)
 - **Fixed Issues with Stuck Video Processing, Selection Persistence, and Authentication**:
   - Added automatic detection and reset of videos stuck in processing state for 3+ hours
