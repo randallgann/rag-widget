@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { UserProfileResponse, ChannelResponse, VideoResponse } from '../../types/api';
 import { StatusChangeEvent, useVideoProcessing } from '../../contexts/VideoProcessingContext';
 import { VideoProcessingStatus } from '../../components/video-processing-status';
@@ -1122,6 +1122,12 @@ const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({ authenticatedFetc
           </div>
         </div>
         <div className="ml-auto flex space-x-2">
+          <Link to={`/channels/${channelId}/chat`}>
+            <Button color="blue">
+              <SparklesIcon className="w-4 h-4 mr-1" />
+              Chat with this Channel
+            </Button>
+          </Link>
           <Button color="zinc">
             <PencilIcon className="w-4 h-4 mr-1" />
             Edit
