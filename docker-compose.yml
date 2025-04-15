@@ -78,5 +78,20 @@ services:
       retries: 5
       start_period: 15s
 
+  # Chat Copilot WebAPI Service (Semantic Kernel)
+  chat-copilot-webapi:
+    image: chat-copilot-webapi
+    build:
+      context: /home/rgann/chat-copilot
+      dockerfile: docker/webapi/Dockerfile
+    ports:
+      - "3080:8080"
+    env_file:
+      - /home/rgann/chat-copilot/docker/webapi/.env
+    environment:
+      - Authentication__Type=AzureAd
+      - ASPNETCORE_ENVIRONMENT=Development
+    # No dependencies on the qdrant or rabbitmq services since we're not including them
+
 volumes:
   postgres_data:

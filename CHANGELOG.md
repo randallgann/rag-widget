@@ -10,6 +10,15 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-15 (Semantic Kernel Integration)
+- **Added Chat Copilot WebAPI Service**:
+  - Integrated the chat-copilot semantic kernel webapi service into the application
+  - Added new container configuration in docker-compose.yml
+  - Exposed service on port 3080 to enable AI-powered chat capabilities
+  - Created direct integration with external repository for seamless development workflow
+  - Enabled AI-based chatbot interactions to enhance user experience
+  - Set up proper environment configuration for service connectivity
+
 ### 2025-04-14 (WebSocket ID Mismatch Fix and Video Removal Implementation)
 - **Fixed WebSocket Status Updates ID Mismatch**:
   - Fixed issue where WebSocket status updates weren't being applied to videos in the UI due to ID mismatch
