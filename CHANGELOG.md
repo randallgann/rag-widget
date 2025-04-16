@@ -10,6 +10,31 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-15 (Channel Chat UI Implementation)
+- **Added Channel-Specific Chat Interface**:
+  - Implemented foundation for channel-specific chat UI with basic components
+  - Created navigation between channel details and chat interface
+  - Added chat message display and input components
+  - Set up routing in App.tsx for the new chat interface
+  - Added "Chat with this Channel" button on channel details page
+  - Designed responsive and user-friendly chat layout
+
+- **Implemented Chat API Integration**:
+  - Created comprehensive chat service for HTTP communication with chat-copilot webapi
+  - Built types and interfaces for chat sessions and messages
+  - Implemented chat session management with creation and retrieval
+  - Added message sending functionality via HTTP API with proper error handling
+  - Set up authentication token forwarding for secure communication
+  - Enabled channel context passing through contextId parameter
+
+- **Added Real-time Chat Updates**:
+  - Implemented SignalR integration for real-time message updates
+  - Created connection management with automatic reconnection
+  - Added proper message handling and bot response display
+  - Implemented typing indicators and loading states
+  - Enhanced UI with connection status feedback and error handling
+  - Set up chat group joining for channel-specific updates
+
 ### 2025-04-15 (Semantic Kernel Integration)
 - **Added Chat Copilot WebAPI Service**:
   - Integrated the chat-copilot semantic kernel webapi service into the application

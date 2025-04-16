@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { HubConnection } from '@microsoft/signalr';
+import { chatService, signalRService, ChatSession, ChatMessage, ConnectionStatus } from '../../services/chat';
 import { UserProfileResponse, ChannelResponse } from '../../types/api';
 import { SidebarLayout } from '../../components/sidebar-layout';
 import { 
@@ -82,6 +84,7 @@ function AccountDropdownMenu({
   )
 }
 
+// Local message interface for UI display
 interface Message {
   id: string;
   content: string;
@@ -94,19 +97,18 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
   const [user, setUser] = useState<UserProfileResponse['user'] | null>(initialUser || null);
   const [channel, setChannel] = useState<ChannelResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingChat, setLoadingChat] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+  const [isTyping, setIsTyping] = useState(false);
+  const [chatSession, setChatSession] = useState<ChatSession | null>(null);
+  
+  // SignalR connection ref
+  const connectionRef = useRef<HubConnection | null>(null);
   
   // Chat messages state
-  const [messages, setMessages] = useState<Message[]>([
-    // Initial messages for testing
-    {
-      id: '1',
-      content: 'Hello! How can I help you with questions about this channel?',
-      sender: 'assistant',
-      timestamp: new Date()
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   // Create a simple logger
   const logger = {
@@ -119,6 +121,171 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       console.error(`[CHAT ERROR] ${message}`, data || '');
     }
   };
+  
+  // Get an authentication token for the chat-copilot webapi
+  const getAuthToken = async (): Promise<string> => {
+    try {
+      const tokenResponse = await authenticatedFetch('/api/auth/token');
+      const tokenData = await tokenResponse.json();
+      const accessToken = tokenData.accessToken;
+      
+      if (!accessToken) {
+        throw new Error('Failed to get access token');
+      }
+      
+      return accessToken;
+    } catch (error) {
+      logger.error('Error getting auth token:', error);
+      throw error;
+    }
+  };
+
+  // Initialize chat session and load chat history
+  const initializeChatSession = useCallback(async () => {
+    try {
+      setLoadingChat(true);
+      logger.debug(`Initializing chat session for channel ${channelId}`);
+      
+      // Get authentication token
+      const accessToken = await getAuthToken();
+      
+      // Get or create chat session for this channel
+      const session = await chatService.getOrCreateChatSession(channelId, accessToken);
+      setChatSession(session);
+      logger.debug('Chat session initialized:', session);
+      
+      // Load chat messages
+      const chatMessages = await chatService.getChatMessages(session.id, accessToken);
+      
+      // Convert API messages to our local format
+      const formattedMessages: Message[] = chatMessages.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        sender: msg.role === 'user' ? 'user' : 'assistant',
+        timestamp: new Date(msg.createdOn)
+      }));
+      
+      setMessages(formattedMessages);
+      setLoadingChat(false);
+      
+      return session;
+    } catch (error) {
+      logger.error('Error initializing chat session:', error);
+      setError('Failed to initialize chat session. Please try refreshing the page.');
+      setLoadingChat(false);
+      throw error;
+    }
+  }, [channelId, authenticatedFetch]);
+  
+  // Initialize SignalR connection
+  const initializeSignalRConnection = useCallback(async (chatSessionId: string) => {
+    try {
+      logger.debug('Initializing SignalR connection to chat-copilot webapi');
+      setConnectionStatus('connecting');
+      
+      // Get access token for authenticating with SignalR
+      const accessToken = await getAuthToken();
+      
+      // Create the connection
+      const connection = signalRService.createHubConnection(accessToken);
+      
+      // Set up connection event handlers
+      connection.onclose((error) => {
+        logger.debug('SignalR connection closed', error);
+        setConnectionStatus('disconnected');
+      });
+      
+      connection.onreconnecting((error) => {
+        logger.debug('SignalR reconnecting', error);
+        setConnectionStatus('reconnecting');
+      });
+      
+      connection.onreconnected((connectionId) => {
+        logger.debug('SignalR reconnected', connectionId);
+        setConnectionStatus('connected');
+      });
+      
+      // Set up message handlers
+      // Handle incoming messages from the bot
+      connection.on('ReceiveMessage', (chatId, senderId, message) => {
+        logger.debug('Received message from SignalR:', { chatId, senderId, message });
+        
+        // Only process messages for our chat session
+        if (chatId !== chatSessionId) return;
+        
+        // Add message to our local state
+        if (message && message.content) {
+          const newMessage: Message = {
+            id: message.id || Math.random().toString(36).substring(2, 9),
+            content: message.content,
+            sender: 'assistant',
+            timestamp: new Date()
+          };
+          
+          setMessages(prev => [...prev, newMessage]);
+          setIsTyping(false);
+        }
+      });
+      
+      // Handle bot response status (generating/typing)
+      connection.on('ReceiveBotResponseStatus', (chatId, status) => {
+        logger.debug('Received bot status:', { chatId, status });
+        
+        // Only process status updates for our chat session
+        if (chatId !== chatSessionId) return;
+        
+        // Update typing indicator based on status
+        setIsTyping(status === 'generating');
+      });
+      
+      // Store the connection in ref
+      connectionRef.current = connection;
+      
+      // Start the connection
+      await signalRService.startConnection(connection);
+      logger.debug('SignalR connection established successfully');
+      
+      // Join the chat group to receive updates for this specific chat
+      await signalRService.joinChatGroup(connection, chatSessionId);
+      logger.debug(`Joined chat group for session ${chatSessionId}`);
+      
+      setConnectionStatus('connected');
+      
+    } catch (error) {
+      logger.error('Error establishing SignalR connection:', error);
+      setConnectionStatus('error');
+      setError('Failed to connect to chat service. Please try refreshing the page.');
+    }
+  }, [getAuthToken]);
+  
+  // Initialize chat session and SignalR connection
+  useEffect(() => {
+    const initializeChat = async () => {
+      try {
+        // First initialize the chat session
+        const session = await initializeChatSession();
+        
+        // Then initialize SignalR connection
+        if (session) {
+          await initializeSignalRConnection(session.id);
+        }
+      } catch (error) {
+        logger.error('Error initializing chat:', error);
+      }
+    };
+    
+    initializeChat();
+    
+    // Clean up connection on unmount
+    return () => {
+      const connection = connectionRef.current;
+      if (connection) {
+        logger.debug('Stopping SignalR connection on unmount');
+        signalRService.stopConnection(connection);
+        connectionRef.current = null;
+      }
+    };
+  }, [initializeChatSession, initializeSignalRConnection]);
 
   // Function to handle user logout
   const handleLogout = async (): Promise<void> => {
@@ -134,32 +301,55 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
     }
   };
 
-  // Function to send a message
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+  // Function to send a message using the HTTP API
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || !chatSession) return;
     
-    // Add user message to chat
-    const userMessage: Message = {
-      id: Math.random().toString(36).substring(2, 9),
-      content: inputValue,
-      sender: 'user',
-      timestamp: new Date()
-    };
+    // Check if we have an active chat session
+    if (!chatSession) {
+      logger.error('Cannot send message: No active chat session');
+      setError('No active chat session. Please refresh the page.');
+      return;
+    }
     
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
-    
-    // For demo purposes, we'll add a dummy response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: Math.random().toString(36).substring(2, 9),
-        content: `This is a placeholder response. In the future, we'll connect to the chat-copilot webapi to get real responses about channel ID: ${channelId}`,
-        sender: 'assistant',
+    try {
+      // Create message object with a temporary ID
+      const messageId = Math.random().toString(36).substring(2, 9);
+      const userMessage: Message = {
+        id: messageId,
+        content: inputValue,
+        sender: 'user',
         timestamp: new Date()
       };
       
-      setMessages(prev => [...prev, assistantMessage]);
-    }, 1000);
+      // Add to UI immediately (optimistic update)
+      setMessages(prev => [...prev, userMessage]);
+      setInputValue('');
+      
+      // Show typing indicator while waiting for response
+      setIsTyping(true);
+      
+      // Get auth token
+      const accessToken = await getAuthToken();
+      
+      // Send message via HTTP API
+      await chatService.sendChatMessage(
+        chatSession.id,
+        userMessage.content,
+        channelId, // Use channel ID as context
+        accessToken
+      );
+      
+      logger.debug('Message sent via HTTP API', messageId);
+      
+      // Note: We don't need to handle the bot response here
+      // The bot's response will come through the SignalR connection
+      
+    } catch (error) {
+      logger.error('Error sending message:', error);
+      setError('Failed to send message. Please try again.');
+      setIsTyping(false);
+    }
   };
 
   // Handle input enter key
@@ -269,50 +459,114 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       <div className="flex flex-col h-[calc(100vh-10rem)]">
         {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto mb-4 p-4 border rounded-lg bg-gray-50 dark:bg-zinc-800">
-          {messages.map((message) => (
-            <div 
-              key={message.id} 
-              className={`mb-4 ${message.sender === 'user' ? 'text-right' : ''}`}
-            >
-              <div 
-                className={`inline-block max-w-[80%] p-3 rounded-lg ${
-                  message.sender === 'user' 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-white text-gray-800 dark:bg-zinc-700 dark:text-gray-100'
-                }`}
-              >
-                <p>{message.content}</p>
-                <div className={`text-xs mt-1 ${
-                  message.sender === 'user'
-                    ? 'text-blue-100'
-                    : 'text-gray-500 dark:text-gray-400'
-                }`}>
-                  {message.timestamp.toLocaleTimeString()}
-                </div>
-              </div>
+          {loading || loadingChat ? (
+            <div className="flex justify-center items-center h-full">
+              <div className="animate-pulse text-gray-500">Loading chat history...</div>
             </div>
-          ))}
+          ) : messages.length === 0 ? (
+            <div className="flex justify-center items-center h-full">
+              <div className="text-gray-500">No messages yet. Start a conversation!</div>
+            </div>
+          ) : (
+            <>
+              {messages.map((message) => (
+                <div 
+                  key={message.id} 
+                  className={`mb-4 ${message.sender === 'user' ? 'text-right' : ''}`}
+                >
+                  <div 
+                    className={`inline-block max-w-[80%] p-3 rounded-lg ${
+                      message.sender === 'user' 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-white text-gray-800 dark:bg-zinc-700 dark:text-gray-100'
+                    }`}
+                  >
+                    <p>{message.content}</p>
+                    <div className={`text-xs mt-1 ${
+                      message.sender === 'user'
+                        ? 'text-blue-100'
+                        : 'text-gray-500 dark:text-gray-400'
+                    }`}>
+                      {message.timestamp.toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Typing indicator */}
+              {isTyping && (
+                <div className="mb-4">
+                  <div className="inline-block max-w-[80%] p-3 rounded-lg bg-white text-gray-800 dark:bg-zinc-700 dark:text-gray-100">
+                    <div className="flex space-x-2">
+                      <div className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      <div className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" style={{ animationDelay: '600ms' }}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* Message Input */}
-        <div className="flex items-center">
-          <textarea
-            className="flex-1 p-3 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
-            placeholder="Ask a question about this channel..."
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            style={{ resize: 'none' }}
-          />
-          <Button 
-            color="blue" 
-            className="rounded-l-none"
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim()}
-          >
-            <PaperAirplaneIcon className="w-5 h-5" />
-          </Button>
+        <div className="flex flex-col">
+          {/* Connection status message */}
+          {connectionStatus !== 'connected' && (
+            <div className={`mb-2 text-sm text-center ${
+              connectionStatus === 'connecting' || connectionStatus === 'reconnecting' 
+                ? 'text-yellow-500' 
+                : 'text-red-500'
+            }`}>
+              {connectionStatus === 'connecting' && 'Connecting to chat service...'}
+              {connectionStatus === 'reconnecting' && 'Reconnecting to chat service...'}
+              {connectionStatus === 'error' && 'Error connecting to chat service. Please refresh.'}
+              {connectionStatus === 'disconnected' && 'Disconnected from chat service. Please refresh.'}
+            </div>
+          )}
+          
+          {/* Error message */}
+          {error && (
+            <div className="mb-2 text-sm text-center text-red-500">
+              {error}
+            </div>
+          )}
+          
+          <div className="flex items-center">
+            <textarea
+              className="flex-1 p-3 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
+              placeholder={
+                connectionStatus !== 'connected' 
+                  ? 'Connecting to chat service...' 
+                  : 'Ask a question about this channel...'
+              }
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              style={{ resize: 'none' }}
+              disabled={connectionStatus !== 'connected' || loading || loadingChat || isTyping}
+            />
+            <Button 
+              color="blue" 
+              className="rounded-l-none"
+              onClick={handleSendMessage}
+              disabled={
+                !inputValue.trim() || 
+                connectionStatus !== 'connected' || 
+                loading || 
+                loadingChat || 
+                isTyping ||
+                !chatSession
+              }
+            >
+              {isTyping ? (
+                <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+              ) : (
+                <PaperAirplaneIcon className="w-5 h-5" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </SidebarLayout>

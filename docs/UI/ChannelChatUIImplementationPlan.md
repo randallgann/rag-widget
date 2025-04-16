@@ -36,13 +36,26 @@ This document outlines the plan for extending the existing api-service with a ch
 
 ### Data Flow
 
-1. User navigates to channel chat from channel details
-2. Frontend establishes SignalR connection with chat-copilot webapi
-   - Connection includes channel ID and authentication context
-   - Connection is scoped to receive updates only for this channel
-3. User messages are sent to webapi through SignalR connection
-4. Responses from LLM are received in real-time through the same connection
-5. Chat history is persisted server-side and loaded on reconnection
+1. **Initialization**
+   - User navigates to channel chat from channel details page
+   - Frontend creates a chat session via HTTP API with the channel ID as contextId
+   - Frontend establishes SignalR connection with chat-copilot webapi's MessageRelayHub
+   - Connection joins a group specific to the chat session
+
+2. **Sending Messages**
+   - User enters a message in the chat interface
+   - Message is sent to webapi via HTTP POST to `/chats/{chatId}/messages`
+   - The channel ID is included as contextId to maintain channel-specific context
+
+3. **Receiving Updates**
+   - Bot responses are received in real-time through the SignalR connection
+   - Status updates (like "bot is thinking") come through SignalR events
+   - Other user interactions (if implementing multi-user chat) are also received via SignalR
+
+4. **Persistence**
+   - Chat history is persisted server-side by the chat-copilot webapi
+   - Previous messages can be loaded via HTTP GET to `/chats/{chatId}/messages`
+   - Chat sessions for a specific channel can be retrieved via GET to `/chats/context/{channelId}`
 
 ## UI/UX Design
 
@@ -73,12 +86,19 @@ This document outlines the plan for extending the existing api-service with a ch
 3. Add navigation buttons on channel details page
 4. Set up basic UI layout and styling
 
-### Phase 2: SignalR Integration
+### Phase 2: Chat-Copilot API Integration
 
-1. Set up SignalR client connection in frontend
-2. Configure channel-specific connection parameters
-3. Implement connection management (connect/disconnect/reconnect)
-4. Test basic message sending and receiving
+1. **HTTP API Integration**
+   - Implement chat session creation via POST `/chats`
+   - Set up authentication for API requests
+   - Create message sending functionality using POST `/chats/{chatId}/messages`
+   - Pass channel context using the `contextId` parameter
+
+2. **SignalR Integration**
+   - Set up SignalR client connection to MessageRelayHub
+   - Configure channel-specific group membership
+   - Implement connection management (connect/disconnect/reconnect)
+   - Add handlers for receiving bot responses via SignalR events
 
 ### Phase 3: Full Chat Experience
 
@@ -97,41 +117,110 @@ This document outlines the plan for extending the existing api-service with a ch
 
 ## Technical Considerations
 
-### SignalR Connection Management
+### Communication Pattern
 
-```typescript
-// Example SignalR connection setup with channel scoping
-const initializeSignalRConnection = async (channelId: string, authToken: string) => {
-  const connection = new HubConnectionBuilder()
-    .withUrl(`http://chat-copilot-webapi:8080/chat?channelId=${channelId}`, {
-      accessTokenFactory: () => authToken
-    })
-    .withAutomaticReconnect()
-    .build();
-    
-  connection.on("ReceiveMessage", (message) => {
-    // Handle incoming message from LLM
-    updateChatHistory(message);
-  });
-  
-  await connection.start();
-  return connection;
-};
+The chat interface uses two communication channels with the chat-copilot webapi:
+
+1. **HTTP API for Command Operations**
+   ```typescript
+   // Example HTTP API for sending messages
+   const sendChatMessage = async (chatId: string, message: string, channelId: string) => {
+     const response = await fetch(`http://localhost:3080/chats/${chatId}/messages`, {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json',
+         'Authorization': `Bearer ${accessToken}`
+       },
+       body: JSON.stringify({
+         input: message,
+         contextId: channelId // Pass channel context to isolate conversations
+       })
+     });
+     
+     return await response.json();
+   };
+   ```
+
+2. **SignalR for Real-time Updates**
+   ```typescript
+   // Example SignalR connection setup with channel scoping
+   const initializeSignalRConnection = async (chatId: string, authToken: string) => {
+     const connection = new HubConnectionBuilder()
+       .withUrl(`http://localhost:3080/messageRelayHub`, {
+         accessTokenFactory: () => authToken
+       })
+       .withAutomaticReconnect()
+       .build();
+       
+     // Add handlers for different types of messages
+     connection.on("ReceiveMessage", (chatId, senderId, message) => {
+       // Handle incoming message from other users
+       updateChatHistory(message);
+     });
+     
+     connection.on("ReceiveBotResponseStatus", (chatId, status) => {
+       // Handle bot response status updates
+       updateBotStatus(status);
+     });
+     
+     // Start the connection
+     await connection.start();
+     
+     // Join the specific chat group using the chat ID
+     await connection.invoke("AddClientToGroupAsync", chatId);
+     
+     return connection;
+   };
 ```
 
 ### Chat Component Structure
 
 ```tsx
-// Example component structure
+// Example component structure using hybrid HTTP/SignalR approach
 const ChannelChat: React.FC = () => {
   const { channelId } = useParams<{ channelId: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const connection = useSignalRConnection(channelId);
+  const [chatSession, setChatSession] = useState<ChatSession | null>(null);
+  const connectionRef = useRef<HubConnection | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   
+  // Initialize chat session and SignalR connection on component mount
+  useEffect(() => {
+    const initializeChat = async () => {
+      try {
+        // 1. Create or get existing chat session for this channel
+        const session = await createOrGetChatSession(channelId);
+        setChatSession(session);
+        
+        // 2. Load chat history
+        const history = await getChatMessages(session.id);
+        setMessages(history);
+        
+        // 3. Initialize SignalR connection for real-time updates
+        const connection = await initializeSignalRConnection(session.id, await getAuthToken());
+        connectionRef.current = connection;
+        setConnectionStatus('connected');
+      } catch (error) {
+        console.error('Failed to initialize chat:', error);
+        setConnectionStatus('error');
+      }
+    };
+    
+    initializeChat();
+    
+    // Cleanup connection on unmount
+    return () => {
+      if (connectionRef.current) {
+        connectionRef.current.stop();
+      }
+    };
+  }, [channelId]);
+  
+  // Send message via HTTP API
   const sendMessage = async () => {
-    if (!inputValue.trim() || !connection) return;
+    if (!inputValue.trim() || !chatSession) return;
     
     setIsLoading(true);
     const userMessage = {
@@ -141,28 +230,40 @@ const ChannelChat: React.FC = () => {
       timestamp: new Date()
     };
     
+    // Add user message to UI immediately (optimistic update)
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     
     try {
-      await connection.invoke("SendMessage", {
-        channelId,
-        message: userMessage.content
-      });
+      // Send message via HTTP API
+      await sendChatMessage(
+        chatSession.id,
+        userMessage.content, 
+        channelId // Pass channelId as contextId
+      );
     } catch (error) {
-      // Handle error
+      console.error('Failed to send message:', error);
+      // Handle error (possibly remove the message from UI)
+    } finally {
+      setIsLoading(false);
     }
   };
   
   return (
     <div className="chat-container">
-      <ChatHeader channelId={channelId} />
-      <MessageList messages={messages} isLoading={isLoading} />
+      <ChatHeader 
+        channelId={channelId}
+        connectionStatus={connectionStatus} 
+      />
+      <MessageList 
+        messages={messages} 
+        isLoading={isLoading} 
+      />
       <MessageInput 
         value={inputValue} 
         onChange={setInputValue}
         onSend={sendMessage}
-        disabled={isLoading || !connection}
+        disabled={isLoading || connectionStatus !== 'connected'}
       />
     </div>
   );
@@ -171,8 +272,47 @@ const ChannelChat: React.FC = () => {
 
 ## Next Steps
 
-1. Create UI wireframes for chat interface
-2. Set up routing and navigation
-3. Implement basic SignalR connection
-4. Build core chat components
-5. Test integration with chat-copilot webapi
+### Implementation Sequence
+
+1. **Foundation (Already Completed)**
+   - Created basic UI components and navigation
+   - Set up routing in App.tsx
+   - Added "Chat with this Channel" button on channel details page
+
+2. **Chat Session Management**
+   - Implement HTTP service for creating chat sessions
+   - Add functions to retrieve chat history
+   - Create authentication token handling for chat-copilot API
+
+3. **Real-time Updates with SignalR**
+   - Implement SignalR connection to MessageRelayHub
+   - Add handlers for different message types
+   - Create connection management with reconnection logic
+   - Implement real-time bot response display
+
+4. **Complete Chat Experience**
+   - Enhance UI with message styling and formatting
+   - Add loading states and typing indicators
+   - Implement error handling and reconnection logic
+   - Add chat history persistence and retrieval
+
+5. **Channel-Kernel Integration**
+   - Implement kernel management for channel-specific AI contexts:
+     - Create a kernel for each YouTube channel during channel creation
+     - Store the mapping between channel ID and kernel ID in the database
+     - Add a kernelService to manage kernel creation, retrieval and configuration
+     - Update the channel onboarding process to create associated kernels
+     - Enhance the chat session creation to use channel-specific kernels
+   - Add database schema updates:
+     - New column in Channels table to store the kernel ID
+     - Migration script to update existing channels
+
+6. **Channel Context Integration**
+   - Pass channel metadata to chat-copilot for context
+   - Configure prompt templates with channel-specific knowledge
+   - Test responses with channel-specific understanding
+   - Fine-tune the experience for YouTube content questions
+   - Add video content indexing to provide relevant information to the chat:
+     - Extract transcripts and metadata from processed videos
+     - Store embeddings in the vector database
+     - Configure the chat service to query channel-specific vectors
