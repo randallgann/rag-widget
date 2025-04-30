@@ -204,6 +204,12 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
   const initializeSignalRConnection = useCallback(async (chatSessionId: string) => {
     try {
       logger.debug('Initializing SignalR connection to chat-copilot webapi');
+      
+      // Validate chat session ID to prevent ArgumentNullException
+      if (!chatSessionId || chatSessionId.trim() === '') {
+        throw new Error('Cannot initialize SignalR connection: chat session ID is missing or empty');
+      }
+      
       setConnectionStatus('connecting');
       
       // Get access token for authenticating with SignalR
@@ -268,9 +274,14 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       await signalRService.startConnection(connection);
       logger.debug('SignalR connection established successfully');
       
-      // Join the chat group to receive updates for this specific chat
-      await signalRService.joinChatGroup(connection, chatSessionId);
-      logger.debug(`Joined chat group for session ${chatSessionId}`);
+      // Double-check that we have a valid chat session ID before joining group
+      if (chatSessionId && chatSessionId.trim() !== '') {
+        // Join the chat group to receive updates for this specific chat
+        await signalRService.joinChatGroup(connection, chatSessionId);
+        logger.debug(`Joined chat group for session ${chatSessionId}`);
+      } else {
+        logger.error('Could not join chat group: invalid chat session ID');
+      }
       
       setConnectionStatus('connected');
       
@@ -281,19 +292,45 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
     }
   }, [getAuthToken]);
   
+  // Track connection attempts to prevent race conditions
+  const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const hasInitializedRef = useRef<boolean>(false);
+  
   // Initialize chat session and SignalR connection
   useEffect(() => {
+    // Prevent multiple initializations if already in progress
+    if (isConnecting) {
+      logger.debug('Connection initialization already in progress, skipping');
+      return;
+    }
+    
+    // Prevent re-initialization if already completed successfully
+    if (hasInitializedRef.current && connectionRef.current && connectionStatus === 'connected') {
+      logger.debug('Connection already established, skipping initialization');
+      return;
+    }
+    
     const initializeChat = async () => {
       try {
+        setIsConnecting(true);
+        logger.debug('Starting connection initialization process');
+        
         // First initialize the chat session
         const session = await initializeChatSession();
         
-        // Then initialize SignalR connection
-        if (session) {
+        // Verify we have a valid session with an ID before attempting SignalR connection
+        if (session && session.id && session.id.trim() !== '') {
+          logger.debug(`Valid chat session obtained with ID: ${session.id}`);
           await initializeSignalRConnection(session.id);
+          hasInitializedRef.current = true;
+        } else {
+          logger.error('Failed to initialize SignalR: Invalid chat session or missing session ID');
+          setError('Could not establish chat session. Please try refreshing the page.');
         }
       } catch (error) {
         logger.error('Error initializing chat:', error);
+      } finally {
+        setIsConnecting(false);
       }
     };
     
@@ -301,14 +338,26 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
     
     // Clean up connection on unmount
     return () => {
+      // Use a debounced cleanup to prevent race conditions with connection attempts
       const connection = connectionRef.current;
       if (connection) {
         logger.debug('Stopping SignalR connection on unmount');
-        signalRService.stopConnection(connection);
-        connectionRef.current = null;
+        // Small timeout to ensure we don't close during negotiation
+        setTimeout(() => {
+          if (connectionRef.current === connection) {
+            signalRService.stopConnection(connection)
+              .then(() => {
+                connectionRef.current = null;
+                logger.debug('SignalR connection successfully stopped');
+              })
+              .catch(err => {
+                logger.error('Error stopping SignalR connection:', err);
+              });
+          }
+        }, 100);
       }
     };
-  }, [initializeChatSession, initializeSignalRConnection]);
+  }, [channelId]); // Only re-run when channelId changes
 
   // Function to handle user logout
   const handleLogout = async (): Promise<void> => {
