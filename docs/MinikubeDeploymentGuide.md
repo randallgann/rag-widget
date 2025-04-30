@@ -100,13 +100,21 @@ docker images | grep rag-widget
 
 ## Deploying to Kubernetes
 
-Apply the Kubernetes manifests for each component:
+1. **Enable the Ingress addon in Minikube**:
+
+```bash
+minikube addons enable ingress
+```
+
+2. **Apply the Kubernetes manifests for each component**:
 
 ```bash
 kubectl apply -f kubernetes/postgres.yml
-kubectl apply -f kubernetes/auth-server.yml
-kubectl apply -f kubernetes/admin-portal.yml
+kubectl apply -f kubernetes/api-service.yml
 kubectl apply -f kubernetes/frontend.yml
+kubectl apply -f kubernetes/chat-copilot-secret.yml
+kubectl apply -f kubernetes/chat-copilot-webapi.yml
+kubectl apply -f kubernetes/ingress.yml
 ```
 
 Check that all pods are running:
@@ -118,45 +126,60 @@ kubectl get pods
 You should see all pods with a "Running" status after a few minutes:
 
 ```
-NAME                            READY   STATUS    RESTARTS   AGE
-admin-portal-xxxxxxxx-xxxxx     1/1     Running   0          2m
-auth-server-xxxxxxxx-xxxxx      1/1     Running   0          2m
-frontend-xxxxxxxx-xxxxx         1/1     Running   0          2m
-postgres-xxxxxxxx-xxxxx         1/1     Running   0          2m
+NAME                              READY   STATUS    RESTARTS   AGE
+api-service-xxxxxxxx-xxxxx        1/1     Running   0          2m
+frontend-xxxxxxxx-xxxxx           1/1     Running   0          2m
+postgres-xxxxxxxx-xxxxx           1/1     Running   0          2m
+chat-copilot-webapi-xxxxx-xxxxx   1/1     Running   0          2m
 ```
 
 ## Accessing the Application
 
-The services are configured as LoadBalancer type, which requires the Minikube tunnel feature to access from your local machine:
+### Method 1: Using the Ingress (Recommended)
 
-1. Start a Minikube tunnel in a separate terminal (this needs to keep running):
-
-```bash
-minikube tunnel
-```
-
-2. Verify that the services have received external IPs:
+1. **Get the Minikube IP**:
 
 ```bash
-kubectl get services
+minikube ip
 ```
 
-You should see something like:
+2. **Add a hosts entry (optional)**:
 
-```
-NAME           TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
-admin-portal   LoadBalancer   10.98.22.251     127.0.0.1     3000:31253/TCP   10m
-auth-server    LoadBalancer   10.99.167.2      127.0.0.1     3001:31951/TCP   10m
-frontend       LoadBalancer   10.109.70.237    127.0.0.1     3003:32517/TCP   10m
-kubernetes     ClusterIP      10.96.0.1        <none>        443/TCP          20m
-postgres       ClusterIP      10.108.145.161   <none>        5432/TCP         10m
+```bash
+sudo sh -c "echo '$(minikube ip) rag-widget.local' >> /etc/hosts"
 ```
 
-3. Access the application in your web browser:
+3. **Access the application**:
 
+With hosts entry:
+- Main Application: http://rag-widget.local/
+- API Service: http://rag-widget.local/api
+- Chat Service: http://rag-widget.local/chat
+
+With Minikube IP directly:
+- Main Application: http://<minikube-ip>/
+- API Service: http://<minikube-ip>/api
+- Chat Service: http://<minikube-ip>/chat
+
+### Method 2: Port Forwarding
+
+If you prefer not to use the Ingress or need to directly access services:
+
+```bash
+# For API service
+kubectl port-forward service/api-service 3001:3001
+
+# For frontend
+kubectl port-forward service/frontend 3003:3003
+
+# For chat-copilot-webapi
+kubectl port-forward service/chat-copilot-webapi 3080:3080
+```
+
+Then access:
 - Frontend: http://127.0.0.1:3003
-- Admin Portal: http://127.0.0.1:3000
-- Auth Server: http://127.0.0.1:3001
+- API Service: http://127.0.0.1:3001
+- Chat Service: http://127.0.0.1:3080
 
 ## Troubleshooting
 

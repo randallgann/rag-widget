@@ -20,7 +20,8 @@ class SignalRService {
   createHubConnection(authToken: string): HubConnection {
     return new HubConnectionBuilder()
       .withUrl(this.hubUrl, {
-        accessTokenFactory: () => authToken
+        accessTokenFactory: () => authToken,
+        withCredentials: false
       })
       .withAutomaticReconnect({
         nextRetryDelayInMilliseconds: retryContext => {

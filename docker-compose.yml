@@ -89,7 +89,7 @@ services:
     env_file:
       - /home/rgann/chat-copilot/docker/webapi/.env
     environment:
-      - Authentication__Type=AzureAd
+      - Authentication__Type=None
       - ASPNETCORE_ENVIRONMENT=Development
     # No dependencies on the qdrant or rabbitmq services since we're not including them
 

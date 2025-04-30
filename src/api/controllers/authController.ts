@@ -686,3 +686,39 @@ export const logout = (req: Request, res: Response) => {
     message: 'Logged out successfully'
   });
 };
+
+/**
+ * Get access token for chat-copilot webapi
+ * This endpoint returns the current user's access token for use with the chat-copilot service
+ */
+export const getChatToken = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    let accessToken = '';
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      accessToken = authHeader.split(' ')[1];
+    }
+    
+    if (!accessToken) {
+      throw new AppError('No access token found', 401);
+    }
+    
+    // Verify the token is valid
+    try {
+      await auth0Service.verifyAccessToken(accessToken);
+    } catch (error) {
+      logger.error('Invalid access token in getChatToken', error);
+      throw new AppError('Invalid access token', 401);
+    }
+    
+    // Return the access token in the format expected by chat-copilot
+    return res.json({
+      accessToken: accessToken
+    });
+  } catch (error) {
+    logger.error('Error in getChatToken:', error);
+    next(error);
+  }
+};

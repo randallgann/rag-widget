@@ -148,30 +148,53 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       
       // Get authentication token
       const accessToken = await getAuthToken();
+      logger.debug('Authentication token obtained');
       
       // Get or create chat session for this channel
+      logger.debug(`Getting or creating chat session for channel ${channelId}`);
       const session = await chatService.getOrCreateChatSession(channelId, accessToken);
       setChatSession(session);
       logger.debug('Chat session initialized:', session);
       
-      // Load chat messages
-      const chatMessages = await chatService.getChatMessages(session.id, accessToken);
+      // Load chat messages with pagination parameters
+      logger.debug(`Loading messages for chat session ${session.id}`);
+      const chatMessages = await chatService.getChatMessages(session.id, accessToken, 0, -1);
+      logger.debug(`Loaded ${chatMessages?.length || 0} messages`);
       
-      // Convert API messages to our local format
-      const formattedMessages: Message[] = chatMessages.map(msg => ({
-        id: msg.id,
-        content: msg.content,
-        sender: msg.role === 'user' ? 'user' : 'assistant',
-        timestamp: new Date(msg.createdOn)
-      }));
+      // Convert API messages to our local format if any exist
+      const formattedMessages: Message[] = [];
+      if (chatMessages && chatMessages.length > 0) {
+        chatMessages.forEach(msg => {
+          if (msg && msg.id && msg.content) {
+            formattedMessages.push({
+              id: msg.id,
+              content: msg.content,
+              sender: msg.role === 'user' ? 'user' : 'assistant',
+              timestamp: new Date(msg.createdOn)
+            });
+          }
+        });
+      }
       
       setMessages(formattedMessages);
       setLoadingChat(false);
       
       return session;
-    } catch (error) {
-      logger.error('Error initializing chat session:', error);
-      setError('Failed to initialize chat session. Please try refreshing the page.');
+    } catch (error: any) {
+      // More detailed error logging and handling
+      logger.error(`Error initializing chat session: ${error.message}`, error);
+      
+      // Show more specific error messages based on the error
+      if (error.message?.includes('404')) {
+        setError('Chat service endpoint not found. Please check if the chat-copilot service is running.');
+      } else if (error.message?.includes('401')) {
+        setError('Authentication error connecting to chat service. Please try logging out and back in.');
+      } else if (error.message?.includes('Failed to fetch')) {
+        setError('Network error connecting to chat service. Please check your connection and try again.');
+      } else {
+        setError(`Failed to initialize chat session: ${error.message}`);
+      }
+      
       setLoadingChat(false);
       throw error;
     }

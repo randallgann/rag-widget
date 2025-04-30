@@ -78,7 +78,13 @@ app.use(session({
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
-app.use(cors());
+// Configure CORS with specific options for chat-copilot
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3080'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -86,7 +92,7 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for React-generated styles
       imgSrc: ["'self'", "data:", "https://s.gravatar.com", "https://*.gravatar.com", "https://*.auth0.com", "https://cdn.auth0.com", "https://*.wp.com", "https://i0.wp.com", "https://i1.wp.com", "https://i2.wp.com", "https://i3.wp.com", "https://i.ytimg.com"],
-      connectSrc: ["'self'", "https://*.auth0.com"] // Allow connections to Auth0
+      connectSrc: ["'self'", "https://*.auth0.com", "http://localhost:3080", "ws://localhost:3080"] // Allow connections to Auth0 and chat-copilot webapi (HTTP and WebSocket)
     }
   }
 }));
