@@ -629,11 +629,24 @@ const App: React.FC = () => {
           );
         }} />
         <ProtectedRoute path="/channels/new" component={AddChannelButton} />
-        <ProtectedRoute path="/channels/:channelId" component={(props: any) => {
+        <ProtectedRoute exact path="/channels/:channelId" component={(props: any) => {
           const ChannelDetailPage = React.lazy(() => import('./channels/detail'));
           return (
             <React.Suspense fallback={<div>Loading channel details...</div>}>
               <ChannelDetailPage 
+                {...props} 
+                authenticatedFetch={authenticatedFetch} 
+                user={authState.user} 
+              />
+            </React.Suspense>
+          );
+        }} />
+
+        <ProtectedRoute path="/channels/:channelId/chat" component={(props: any) => {
+          const ChannelChat = React.lazy(() => import('./channels/chat'));
+          return (
+            <React.Suspense fallback={<div>Loading channel chat...</div>}>
+              <ChannelChat 
                 {...props} 
                 authenticatedFetch={authenticatedFetch} 
                 user={authState.user} 

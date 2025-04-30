@@ -10,6 +10,71 @@ Each entry should include:
 
 ## Changes
 
+### 2025-04-30 (SignalR Connection Race Condition Troubleshooting)
+- **Fixed Initial CORS and Connection Issues in Chat Implementation**:
+  - Fixed CORS issue by adding `withCredentials: false` to SignalR connection configuration
+  - Resolved 404 errors in chat API by ensuring empty array responses instead of not found errors
+  - Identified new race condition in SignalR connections causing "connection stopped during negotiation" errors
+  - Planned fixes for race condition:
+    - Update useEffect dependency array to prevent multiple connection attempts
+    - Add connection attempt tracking with isConnecting state
+    - Implement debounced cleanup for SignalR connections
+    - Add exponential backoff retry mechanism
+    - Consider lifting connection management to parent component
+  - Enhanced error handling in ChatService for better debugging
+  - Added more detailed logging of connection states and errors
+
+### 2025-04-29 (Chat Copilot WebAPI Integration Troubleshooting)
+- **Attempted to Fix Chat Copilot Connection Issues**:
+  - Created missing auth token endpoint at `/api/auth/token` to provide authentication for chat-copilot service
+  - Updated Content Security Policy to allow connections to chat-copilot webapi (HTTP and WebSocket)
+  - Added pagination parameters to chat service API requests (`skip` and `count`)
+  - Enhanced error handling and improved debugging in chatService.ts
+  - Improved Chat UI to handle empty responses and connection issues gracefully
+  - Removed `credentials: 'include'` from fetch requests to avoid CORS issues
+  - Configured proper CORS settings in app.ts
+  - Added detailed console logging throughout the chat service flow
+  - **IMPORTANT**: Connection issue persists and needs further investigation in next session
+  - Current error: CORS policy blocks requests despite configuration changes
+
+### 2025-04-17 (Kubernetes Ingress Setup and Chat Copilot Integration)
+- **Added Kubernetes Ingress Controller**:
+  - Created ingress.yml manifest to route traffic to all services through a single endpoint
+  - Updated existing service manifests to use ClusterIP instead of LoadBalancer type
+  - Added detailed IngressSetupGuide.md with configuration and troubleshooting instructions
+  - Modified Minikube deployment guide to include Ingress setup steps
+
+- **Improved Kubernetes Deployment with Chat Copilot WebAPI**:
+  - Created chat-copilot-webapi.yml manifest to deploy the ChatGPT service in Kubernetes
+  - Added chat-copilot-secret.yml for managing environment variables securely
+  - Updated build-minikube-images.sh script to include chat-copilot-webapi image building
+  - Enhanced documentation with detailed access instructions for both Ingress and direct access
+
+### 2025-04-15 (Channel Chat UI Implementation)
+- **Added Channel-Specific Chat Interface**:
+  - Implemented foundation for channel-specific chat UI with basic components
+  - Created navigation between channel details and chat interface
+  - Added chat message display and input components
+  - Set up routing in App.tsx for the new chat interface
+  - Added "Chat with this Channel" button on channel details page
+  - Designed responsive and user-friendly chat layout
+
+- **Implemented Chat API Integration**:
+  - Created comprehensive chat service for HTTP communication with chat-copilot webapi
+  - Built types and interfaces for chat sessions and messages
+  - Implemented chat session management with creation and retrieval
+  - Added message sending functionality via HTTP API with proper error handling
+  - Set up authentication token forwarding for secure communication
+  - Enabled channel context passing through contextId parameter
+
+- **Added Real-time Chat Updates**:
+  - Implemented SignalR integration for real-time message updates
+  - Created connection management with automatic reconnection
+  - Added proper message handling and bot response display
+  - Implemented typing indicators and loading states
+  - Enhanced UI with connection status feedback and error handling
+  - Set up chat group joining for channel-specific updates
+
 ### 2025-04-15 (Semantic Kernel Integration)
 - **Added Chat Copilot WebAPI Service**:
   - Integrated the chat-copilot semantic kernel webapi service into the application

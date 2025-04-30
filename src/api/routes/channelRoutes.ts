@@ -61,4 +61,12 @@ router.delete('/:id', validateAuth0Token, requireAuth, deleteChannel);
  */
 router.post('/:id/process', validateAuth0Token, requireAuth, processChannelVideos);
 
+/**
+ * @route   GET /api/channels/:id/chat
+ * @desc    Get chat information for a channel
+ * @access  Private
+ * @note    This route will be implemented in a future phase
+ */
+// Route placeholder for future implementation
+
 export default router;

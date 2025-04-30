@@ -10,7 +10,8 @@ import {
   getUserProfile,
   handleTokenValidation,
   checkAuth,
-  logout
+  logout,
+  getChatToken
 } from '../controllers/authController';
 import { validateAuth0Token, requireAuth } from '../middlewares/auth';
 
@@ -85,5 +86,12 @@ router.get('/profile', validateAuth0Token, requireAuth, getUserProfile);
  * @access  Public
  */
 router.post('/logout', logout);
+
+/**
+ * @route   GET /api/auth/token
+ * @desc    Get access token for chat-copilot webapi
+ * @access  Private
+ */
+router.get('/token', validateAuth0Token, requireAuth, getChatToken);
 
 export default router;

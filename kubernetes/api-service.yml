@@ -84,9 +84,9 @@ spec:
               name: auth0-secret
               key: SESSION_KEY
         - name: FRONTEND_URL
-          value: "http://127.0.0.1:3003"
+          value: "http://rag-widget.local"
         - name: API_SERVICE_URL
-          value: "http://127.0.0.1:3001"
+          value: "http://rag-widget.local/api"
         - name: YOUTUBE_API_KEY
           valueFrom:
             secretKeyRef:
@@ -127,7 +127,7 @@ kind: Service
 metadata:
   name: api-service
 spec:
-  type: LoadBalancer  # Or ClusterIP if you'll access through Ingress
+  type: ClusterIP  # Changed to ClusterIP as we'll access through Ingress
   selector:
     app: api-service
   ports:

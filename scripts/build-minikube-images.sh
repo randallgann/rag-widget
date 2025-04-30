@@ -32,12 +32,23 @@ fi
 echo "Building postgres image..."
 docker build -t rag-widget-postgres:latest -f database/Dockerfile database
 
+# Build chat-copilot-webapi image if the directory exists
+if [ -d "/home/rgann/chat-copilot" ]; then
+  echo "Building chat-copilot-webapi image..."
+  docker build -t chat-copilot-webapi:latest -f /home/rgann/chat-copilot/docker/webapi/Dockerfile /home/rgann/chat-copilot
+else
+  echo "Warning: Chat-copilot directory not found at /home/rgann/chat-copilot"
+  echo "Skipping chat-copilot-webapi image build"
+fi
+
 # Verify images were built
 echo "Images in Minikube's Docker:"
-docker images | grep rag-widget
+docker images | grep -E 'rag-widget|chat-copilot'
 
 echo "Image build process complete!"
 echo "You can now deploy using:"
 echo "kubectl apply -f kubernetes/postgres.yml"
 echo "kubectl apply -f kubernetes/api-service.yml"
 echo "kubectl apply -f kubernetes/frontend.yml"
+echo "kubectl apply -f kubernetes/chat-copilot-webapi.yml"
+echo "kubectl apply -f kubernetes/ingress.yml"
