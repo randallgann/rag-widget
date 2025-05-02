@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter as Router, Route, Redirect, Switch } from 'react-router-dom';
 import { UserProfileResponse } from '@/types/api';
 import { VideoProcessingProvider } from '../contexts/VideoProcessingContext';
+import { SignalRProvider } from '../contexts/SignalRContext';
 import Dashboard from './dashboard';
 import AddChannelButton from './channelOnboarding';
 
@@ -615,52 +616,74 @@ const App: React.FC = () => {
         </div>
       )}
       
-      {/* Wrap the entire application with VideoProcessingProvider to ensure single WebSocket connection */}
+      {/* Wrap the entire application with providers to ensure shared connections */}
       <VideoProcessingProvider>
-        <Switch>
-        <GuestRoute exact path="/" component={HomePage} />
-        <ProtectedRoute exact path="/dashboard" component={Dashboard} />
-        <ProtectedRoute exact path="/channels" component={() => {
-          const ChannelsPage = React.lazy(() => import('./channels'));
-          return (
-            <React.Suspense fallback={<div>Loading channels page...</div>}>
-              <ChannelsPage authenticatedFetch={authenticatedFetch} user={authState.user} />
-            </React.Suspense>
-          );
-        }} />
-        <ProtectedRoute path="/channels/new" component={AddChannelButton} />
-        <ProtectedRoute exact path="/channels/:channelId" component={(props: any) => {
-          const ChannelDetailPage = React.lazy(() => import('./channels/detail'));
-          return (
-            <React.Suspense fallback={<div>Loading channel details...</div>}>
-              <ChannelDetailPage 
-                {...props} 
-                authenticatedFetch={authenticatedFetch} 
-                user={authState.user} 
-              />
-            </React.Suspense>
-          );
-        }} />
+        {/* Add SignalRProvider with getAuthToken function */}
+        <SignalRProvider getAuthToken={async () => {
+          // Try to use the existing access token from state/ref
+          if (latestAccessToken.current) {
+            return latestAccessToken.current;
+          }
+          
+          // If no token, try to refresh
+          logger.debug('No token available for SignalR, refreshing');
+          const success = await refreshToken();
+          if (success && latestAccessToken.current) {
+            return latestAccessToken.current;
+          }
+          
+          // If refresh failed, try auth check as fallback
+          logger.debug('Token refresh failed, trying auth check');
+          await checkAuth();
+          
+          // Return whatever token we have now, might still be null
+          return latestAccessToken.current || '';
+        }}>
+          <Switch>
+            <GuestRoute exact path="/" component={HomePage} />
+            <ProtectedRoute exact path="/dashboard" component={Dashboard} />
+            <ProtectedRoute exact path="/channels" component={() => {
+              const ChannelsPage = React.lazy(() => import('./channels'));
+              return (
+                <React.Suspense fallback={<div>Loading channels page...</div>}>
+                  <ChannelsPage authenticatedFetch={authenticatedFetch} user={authState.user} />
+                </React.Suspense>
+              );
+            }} />
+            <ProtectedRoute path="/channels/new" component={AddChannelButton} />
+            <ProtectedRoute exact path="/channels/:channelId" component={(props: any) => {
+              const ChannelDetailPage = React.lazy(() => import('./channels/detail'));
+              return (
+                <React.Suspense fallback={<div>Loading channel details...</div>}>
+                  <ChannelDetailPage 
+                    {...props} 
+                    authenticatedFetch={authenticatedFetch} 
+                    user={authState.user} 
+                  />
+                </React.Suspense>
+              );
+            }} />
 
-        <ProtectedRoute path="/channels/:channelId/chat" component={(props: any) => {
-          const ChannelChat = React.lazy(() => import('./channels/chat'));
-          return (
-            <React.Suspense fallback={<div>Loading channel chat...</div>}>
-              <ChannelChat 
-                {...props} 
-                authenticatedFetch={authenticatedFetch} 
-                user={authState.user} 
-              />
-            </React.Suspense>
-          );
-        }} />
-        
-        {/* Catch all route - useful for debugging */}
-        <Route path="*" render={props => {
-          logger.warn(`Accessed unknown route: ${props.location.pathname}`);
-          return <Redirect to="/" />;
-        }} />
-      </Switch>
+            <ProtectedRoute path="/channels/:channelId/chat" component={(props: any) => {
+              const ChannelChat = React.lazy(() => import('./channels/chat'));
+              return (
+                <React.Suspense fallback={<div>Loading channel chat...</div>}>
+                  <ChannelChat 
+                    {...props} 
+                    authenticatedFetch={authenticatedFetch} 
+                    user={authState.user} 
+                  />
+                </React.Suspense>
+              );
+            }} />
+            
+            {/* Catch all route - useful for debugging */}
+            <Route path="*" render={props => {
+              logger.warn(`Accessed unknown route: ${props.location.pathname}`);
+              return <Redirect to="/" />;
+            }} />
+          </Switch>
+        </SignalRProvider>
       </VideoProcessingProvider>
     </Router>
   );

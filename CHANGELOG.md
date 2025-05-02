@@ -10,17 +10,30 @@ Each entry should include:
 
 ## Changes
 
+### 2025-05-01 (SignalR Connection Management Refactoring)
+- **Implemented Centralized SignalR Connection Management**:
+  - Created new SignalRContext provider to centralize connection management
+  - Refactored chat component to use shared connection through context
+  - Added reference counting for group subscriptions to prevent premature unsubscribes
+  - Fixed issue with undefined chat session IDs in chatService
+  - Enhanced error handling for connection failures
+  - Detailed documentation with refactoring plan in docs/SignalRArchitecture.md
+  - Comprehensive testing guide in docs/SignalRConnectionTesting.md
+  
+- **Enhanced SignalR Connection Robustness**:
+  - Added keepalive configuration with withKeepAliveInterval and withServerTimeout 
+  - Implemented active client-to-server ping mechanism to prevent timeouts
+  - Added exponential backoff with jitter for reconnections
+  - Enhanced connection retry logic with proper cleanup
+  - Improved handling of reconnection events
+  - Added debounced cleanup to prevent race conditions during unmount
+
 ### 2025-04-30 (SignalR Connection Race Condition Troubleshooting)
 - **Fixed Initial CORS and Connection Issues in Chat Implementation**:
   - Fixed CORS issue by adding `withCredentials: false` to SignalR connection configuration
   - Resolved 404 errors in chat API by ensuring empty array responses instead of not found errors
   - Identified new race condition in SignalR connections causing "connection stopped during negotiation" errors
-  - Planned fixes for race condition:
-    - Update useEffect dependency array to prevent multiple connection attempts
-    - Add connection attempt tracking with isConnecting state
-    - Implement debounced cleanup for SignalR connections
-    - Add exponential backoff retry mechanism
-    - Consider lifting connection management to parent component
+  - Diagnosed server timeout issues causing disconnection errors
   - Enhanced error handling in ChatService for better debugging
   - Added more detailed logging of connection states and errors
 
