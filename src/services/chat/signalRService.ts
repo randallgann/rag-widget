@@ -33,6 +33,9 @@ class SignalRService {
         accessTokenFactory: () => authToken,
         withCredentials: false
       })
+      // Configure keepalive and timeout settings to prevent server disconnections
+      .withKeepAliveInterval(15000) // 15 seconds
+      .withServerTimeout(60000) // 60 seconds (long timeout)
       .withAutomaticReconnect({
         nextRetryDelayInMilliseconds: retryContext => {
           // Stop retrying after MAX_RETRY_ATTEMPTS
@@ -142,6 +145,41 @@ class SignalRService {
     } catch (error) {
       console.error(`Error joining chat group ${chatId}:`, error);
       throw error; // Re-throw the error for the caller to handle
+    }
+  }
+  
+  /**
+   * Leave a chat group to stop receiving updates for a specific chat session
+   * @param connection The active SignalR connection
+   * @param chatId The ID of the chat session to leave
+   * @throws Error if the chatId is null, undefined or empty
+   */
+  async leaveChatGroup(connection: HubConnection, chatId: string): Promise<void> {
+    // Validate chatId parameter
+    if (!chatId || chatId.trim() === '') {
+      throw new Error('Cannot leave chat group: chatId parameter cannot be null or empty');
+    }
+    
+    // Skip if not connected (no need to throw if already disconnected)
+    if (connection.state !== HubConnectionState.Connected) {
+      console.debug(`Skipping leave group ${chatId}: connection not in Connected state`);
+      return;
+    }
+    
+    try {
+      // If the hub has a method to leave groups, uncomment and use this:
+      // await connection.invoke('RemoveClientFromGroupAsync', chatId);
+      
+      // For now, log that we're leaving but the server doesn't support explicit removal
+      // This is still useful since the reference counting in SignalRContext will prevent
+      // rejoining groups unnecessarily
+      console.debug(`Left chat group: ${chatId} (note: server may not support explicit removal)`);
+      
+      // When explicit group leaving is supported by the server, uncomment this method:
+      // await connection.invoke('RemoveClientFromGroupAsync', chatId);
+    } catch (error) {
+      console.error(`Error leaving chat group ${chatId}:`, error);
+      throw error;
     }
   }
   

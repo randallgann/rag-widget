@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { HubConnection } from '@microsoft/signalr';
-import { chatService, signalRService, ChatSession, ChatMessage, ConnectionStatus } from '../../services/chat';
+import { ChatSession, ChatMessage, ConnectionStatus } from '../../services/chat';
+import { chatService } from '../../services/chat';
+import { useSignalR } from '../../contexts/SignalRContext';
 import { UserProfileResponse, ChannelResponse } from '../../types/api';
 import { SidebarLayout } from '../../components/sidebar-layout';
 import { 
@@ -100,15 +101,14 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
   const [loadingChat, setLoadingChat] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [isTyping, setIsTyping] = useState(false);
   const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   
-  // SignalR connection ref
-  const connectionRef = useRef<HubConnection | null>(null);
-  
   // Chat messages state
   const [messages, setMessages] = useState<Message[]>([]);
+  
+  // Use SignalR context instead of managing connection directly
+  const { connectionStatus, joinGroup, leaveGroup, subscribe } = useSignalR();
 
   // Create a simple logger
   const logger = {
@@ -200,47 +200,80 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
     }
   }, [channelId, authenticatedFetch]);
   
-  // Initialize SignalR connection
-  const initializeSignalRConnection = useCallback(async (chatSessionId: string) => {
-    try {
-      logger.debug('Initializing SignalR connection to chat-copilot webapi');
-      
-      // Validate chat session ID to prevent ArgumentNullException
-      if (!chatSessionId || chatSessionId.trim() === '') {
-        throw new Error('Cannot initialize SignalR connection: chat session ID is missing or empty');
+  // No longer need initializeSignalRConnection - this is handled by the context
+  
+  // Initialize chat session
+  useEffect(() => {
+    const initializeChat = async () => {
+      try {
+        logger.debug('Initializing chat session');
+        
+        // Verify we have a valid channelId
+        if (!channelId) {
+          throw new Error('Cannot initialize chat: Missing channelId parameter');
+        }
+        
+        // Initialize chat session
+        const session = await initializeChatSession();
+        
+        // Log the full session for debugging
+        logger.debug('Chat session response:', session);
+        
+        // Verify we have a valid session with an ID
+        if (session && session.id && typeof session.id === 'string' && session.id.trim() !== '') {
+          logger.debug(`Valid chat session obtained with ID: ${session.id}`);
+          
+          // Store the session in state
+          setChatSession(session);
+          
+          // Join chat group using the context
+          await joinGroup(session.id);
+          logger.debug(`Joined chat group for session ${session.id}`);
+        } else {
+          logger.error('Failed to initialize chat: Invalid chat session or missing session ID', session);
+          setError('Could not establish chat session. Please try refreshing the page.');
+        }
+      } catch (error) {
+        logger.error('Error initializing chat:', error);
+        setError('Error initializing chat. Please try refreshing the page.');
       }
-      
-      setConnectionStatus('connecting');
-      
-      // Get access token for authenticating with SignalR
-      const accessToken = await getAuthToken();
-      
-      // Create the connection
-      const connection = signalRService.createHubConnection(accessToken);
-      
-      // Set up connection event handlers
-      connection.onclose((error) => {
-        logger.debug('SignalR connection closed', error);
-        setConnectionStatus('disconnected');
-      });
-      
-      connection.onreconnecting((error) => {
-        logger.debug('SignalR reconnecting', error);
-        setConnectionStatus('reconnecting');
-      });
-      
-      connection.onreconnected((connectionId) => {
-        logger.debug('SignalR reconnected', connectionId);
-        setConnectionStatus('connected');
-      });
-      
-      // Set up message handlers
-      // Handle incoming messages from the bot
-      connection.on('ReceiveMessage', (chatId, senderId, message) => {
-        logger.debug('Received message from SignalR:', { chatId, senderId, message });
+    };
+    
+    initializeChat();
+    
+    // Leave chat group on unmount
+    return () => {
+      if (chatSession?.id) {
+        logger.debug(`Leaving chat group on unmount: ${chatSession.id}`);
+        leaveGroup(chatSession.id).catch(err => {
+          logger.error('Error leaving chat group:', err);
+        });
+      }
+    };
+  }, [channelId, joinGroup, leaveGroup, initializeChatSession]); // Re-run when channelId changes or context functions change
+  
+  // Subscribe to SignalR events when chat session is available
+  useEffect(() => {
+    if (!chatSession || !chatSession.id) {
+      logger.debug('No chat session available, skipping event subscriptions');
+      return;
+    }
+    
+    logger.debug(`Setting up SignalR subscriptions for chat ${chatSession.id}`);
+    
+    // When using the subscribe function, we need to handle the data as a tuple
+    // since the SignalRContext wraps the callback function to handle multiple parameters
+    
+    // Subscribe to message events with a proper wrapper function to handle the tuple
+    const unsubscribeMessage = subscribe<[string, string, any]>('ReceiveMessage', 
+      (data) => {
+        // Destructure the tuple data
+        const [chatId, senderId, message] = data;
+        
+        logger.debug('Received message from SignalR:', { chatId, senderId });
         
         // Only process messages for our chat session
-        if (chatId !== chatSessionId) return;
+        if (chatId !== chatSession.id) return;
         
         // Add message to our local state
         if (message && message.content) {
@@ -254,110 +287,32 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
           setMessages(prev => [...prev, newMessage]);
           setIsTyping(false);
         }
-      });
-      
-      // Handle bot response status (generating/typing)
-      connection.on('ReceiveBotResponseStatus', (chatId, status) => {
+      }
+    );
+    
+    // Subscribe to bot status events with a proper wrapper function to handle the tuple
+    const unsubscribeStatus = subscribe<[string, string]>('ReceiveBotResponseStatus',
+      (data) => {
+        // Destructure the tuple data
+        const [chatId, status] = data;
+        
         logger.debug('Received bot status:', { chatId, status });
         
         // Only process status updates for our chat session
-        if (chatId !== chatSessionId) return;
+        if (chatId !== chatSession.id) return;
         
         // Update typing indicator based on status
         setIsTyping(status === 'generating');
-      });
-      
-      // Store the connection in ref
-      connectionRef.current = connection;
-      
-      // Start the connection
-      await signalRService.startConnection(connection);
-      logger.debug('SignalR connection established successfully');
-      
-      // Double-check that we have a valid chat session ID before joining group
-      if (chatSessionId && chatSessionId.trim() !== '') {
-        // Join the chat group to receive updates for this specific chat
-        await signalRService.joinChatGroup(connection, chatSessionId);
-        logger.debug(`Joined chat group for session ${chatSessionId}`);
-      } else {
-        logger.error('Could not join chat group: invalid chat session ID');
       }
-      
-      setConnectionStatus('connected');
-      
-    } catch (error) {
-      logger.error('Error establishing SignalR connection:', error);
-      setConnectionStatus('error');
-      setError('Failed to connect to chat service. Please try refreshing the page.');
-    }
-  }, [getAuthToken]);
-  
-  // Track connection attempts to prevent race conditions
-  const [isConnecting, setIsConnecting] = useState<boolean>(false);
-  const hasInitializedRef = useRef<boolean>(false);
-  
-  // Initialize chat session and SignalR connection
-  useEffect(() => {
-    // Prevent multiple initializations if already in progress
-    if (isConnecting) {
-      logger.debug('Connection initialization already in progress, skipping');
-      return;
-    }
+    );
     
-    // Prevent re-initialization if already completed successfully
-    if (hasInitializedRef.current && connectionRef.current && connectionStatus === 'connected') {
-      logger.debug('Connection already established, skipping initialization');
-      return;
-    }
-    
-    const initializeChat = async () => {
-      try {
-        setIsConnecting(true);
-        logger.debug('Starting connection initialization process');
-        
-        // First initialize the chat session
-        const session = await initializeChatSession();
-        
-        // Verify we have a valid session with an ID before attempting SignalR connection
-        if (session && session.id && session.id.trim() !== '') {
-          logger.debug(`Valid chat session obtained with ID: ${session.id}`);
-          await initializeSignalRConnection(session.id);
-          hasInitializedRef.current = true;
-        } else {
-          logger.error('Failed to initialize SignalR: Invalid chat session or missing session ID');
-          setError('Could not establish chat session. Please try refreshing the page.');
-        }
-      } catch (error) {
-        logger.error('Error initializing chat:', error);
-      } finally {
-        setIsConnecting(false);
-      }
-    };
-    
-    initializeChat();
-    
-    // Clean up connection on unmount
+    // Cleanup subscriptions on unmount or when chat session changes
     return () => {
-      // Use a debounced cleanup to prevent race conditions with connection attempts
-      const connection = connectionRef.current;
-      if (connection) {
-        logger.debug('Stopping SignalR connection on unmount');
-        // Small timeout to ensure we don't close during negotiation
-        setTimeout(() => {
-          if (connectionRef.current === connection) {
-            signalRService.stopConnection(connection)
-              .then(() => {
-                connectionRef.current = null;
-                logger.debug('SignalR connection successfully stopped');
-              })
-              .catch(err => {
-                logger.error('Error stopping SignalR connection:', err);
-              });
-          }
-        }, 100);
-      }
+      logger.debug('Cleaning up SignalR subscriptions');
+      unsubscribeMessage();
+      unsubscribeStatus();
     };
-  }, [channelId]); // Only re-run when channelId changes
+  }, [chatSession, subscribe]); // Re-subscribe when chat session changes
 
   // Function to handle user logout
   const handleLogout = async (): Promise<void> => {
@@ -583,7 +538,7 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
 
         {/* Message Input */}
         <div className="flex flex-col">
-          {/* Connection status message */}
+          {/* Connection status message - now using the context's connectionStatus */}
           {connectionStatus !== 'connected' && (
             <div className={`mb-2 text-sm text-center ${
               connectionStatus === 'connecting' || connectionStatus === 'reconnecting' 

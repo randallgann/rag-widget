@@ -64,7 +64,16 @@ class ChatService {
       
       const data = await response.json();
       console.debug('Successfully created chat session:', data);
-      return data;
+      
+      // Extract the actual chat session object from the response
+      // The API returns an object with chatSession and initialBotMessage properties
+      if (data.chatSession) {
+        console.debug(`Extracted chat session with ID: ${data.chatSession.id}`);
+        return data.chatSession;
+      } else {
+        console.error('Chat session response does not contain expected chatSession property:', data);
+        throw new Error('Invalid chat session response format');
+      }
     } catch (error) {
       console.error(`Error creating chat session:`, error);
       throw error;
@@ -211,7 +220,14 @@ class ChatService {
    * @returns The chat session to use
    */
   async getOrCreateChatSession(channelId: string, authToken: string): Promise<ChatSession> {
-    console.debug(`Getting or creating chat session for channel: ${channelId}`);
+    logger.debug(`Getting or creating chat session for channel: ${channelId}`);
+    
+    // Validate channelId
+    if (!channelId || channelId.trim() === '') {
+      const error = new Error('Cannot get or create chat session: channelId is required');
+      logger.error(error.message);
+      throw error;
+    }
     
     try {
       // Try to get existing chat sessions for the channel
@@ -225,8 +241,14 @@ class ChatService {
           new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime()
         );
         
-        console.debug(`Using existing chat session: ${sessions[0].id}`);
-        return sessions[0];
+        // Validate the session has an ID
+        if (sessions[0] && sessions[0].id) {
+          console.debug(`Using existing chat session: ${sessions[0].id}`);
+          return sessions[0];
+        } else {
+          logger.error('Retrieved existing session is invalid:', sessions[0]);
+          throw new Error('Invalid chat session format in existing sessions');
+        }
       }
       
       console.debug(`No existing sessions found, creating new session for channel ${channelId}`);
@@ -239,6 +261,12 @@ class ChatService {
     // Create a new chat session if none exists or if we couldn't retrieve them
     try {
       const newSession = await this.createChatSession(channelId, authToken);
+      
+      // Validate the new session
+      if (!newSession || !newSession.id) {
+        throw new Error('Created session is invalid or missing ID');
+      }
+      
       console.debug(`Successfully created new chat session: ${newSession.id}`);
       return newSession;
     } catch (error: any) {
