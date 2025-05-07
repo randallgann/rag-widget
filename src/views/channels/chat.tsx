@@ -177,7 +177,6 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       }
       
       setMessages(formattedMessages);
-      setLoadingChat(false);
       
       return session;
     } catch (error: any) {
@@ -195,8 +194,10 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
         setError(`Failed to initialize chat session: ${error.message}`);
       }
       
-      setLoadingChat(false);
       throw error;
+    } finally {
+      // Always set loadingChat to false when done, even if there's an error
+      setLoadingChat(false);
     }
   }, [channelId, authenticatedFetch]);
   
@@ -207,10 +208,18 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
     const initializeChat = async () => {
       try {
         logger.debug('Initializing chat session');
+        setLoading(true);
         
         // Verify we have a valid channelId
         if (!channelId) {
           throw new Error('Cannot initialize chat: Missing channelId parameter');
+        }
+        
+        // Wait for connection to be established first
+        if (connectionStatus !== 'connected') {
+          logger.debug('Waiting for SignalR connection to be established before initializing chat...');
+          // We'll continue when the connectionStatus changes to 'connected'
+          return;
         }
         
         // Initialize chat session
@@ -236,6 +245,8 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       } catch (error) {
         logger.error('Error initializing chat:', error);
         setError('Error initializing chat. Please try refreshing the page.');
+      } finally {
+        setLoading(false);
       }
     };
     
@@ -250,7 +261,22 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
         });
       }
     };
-  }, [channelId, joinGroup, leaveGroup, initializeChatSession]); // Re-run when channelId changes or context functions change
+  }, [channelId, connectionStatus, joinGroup, leaveGroup, initializeChatSession]); // Re-run when connectionStatus changes
+  
+  // Auto-scroll reference
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Function to scroll to the bottom of the chat
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
+  
+  // Auto-scroll when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
   
   // Subscribe to SignalR events when chat session is available
   useEffect(() => {
@@ -270,10 +296,13 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
         // Destructure the tuple data
         const [chatId, senderId, message] = data;
         
-        logger.debug('Received message from SignalR:', { chatId, senderId });
+        logger.debug('Received message from SignalR:', { chatId, senderId, message });
         
         // Only process messages for our chat session
-        if (chatId !== chatSession.id) return;
+        if (chatId !== chatSession.id) {
+          logger.debug(`Ignoring message for different chat session (received: ${chatId}, current: ${chatSession.id})`);
+          return;
+        }
         
         // Add message to our local state
         if (message && message.content) {
@@ -284,8 +313,18 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
             timestamp: new Date()
           };
           
+          logger.debug('Adding new assistant message to state:', newMessage);
+          
           setMessages(prev => [...prev, newMessage]);
           setIsTyping(false);
+          
+          // Clear any error that might have been shown
+          setError(null);
+          
+          // Scroll to bottom to show new message
+          setTimeout(scrollToBottom, 100);
+        } else {
+          logger.debug('Received message with no content, ignoring');
         }
       }
     );
@@ -299,10 +338,20 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
         logger.debug('Received bot status:', { chatId, status });
         
         // Only process status updates for our chat session
-        if (chatId !== chatSession.id) return;
+        if (chatId !== chatSession.id) {
+          logger.debug(`Ignoring status for different chat session (received: ${chatId}, current: ${chatSession.id})`);
+          return;
+        }
         
         // Update typing indicator based on status
-        setIsTyping(status === 'generating');
+        const isGenerating = status === 'generating';
+        logger.debug(`Setting typing indicator to: ${isGenerating}`);
+        setIsTyping(isGenerating);
+        
+        // Scroll to bottom to show typing indicator
+        if (isGenerating) {
+          setTimeout(scrollToBottom, 100);
+        }
       }
     );
     
@@ -312,7 +361,7 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       unsubscribeMessage();
       unsubscribeStatus();
     };
-  }, [chatSession, subscribe]); // Re-subscribe when chat session changes
+  }, [chatSession, subscribe, scrollToBottom]); // Re-subscribe when chat session changes
 
   // Function to handle user logout
   const handleLogout = async (): Promise<void> => {
@@ -330,12 +379,36 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
 
   // Function to send a message using the HTTP API
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !chatSession) return;
+    // Log state for debugging
+    logger.debug('handleSendMessage called with state:', {
+      inputValue: inputValue,
+      chatSessionExists: !!chatSession,
+      connectionStatus,
+      loading,
+      loadingChat,
+      isTyping
+    });
     
-    // Check if we have an active chat session
+    // Pre-condition checks
+    if (!inputValue.trim()) {
+      logger.debug('Cannot send empty message');
+      return;
+    }
+    
     if (!chatSession) {
       logger.error('Cannot send message: No active chat session');
       setError('No active chat session. Please refresh the page.');
+      return;
+    }
+
+    if (connectionStatus !== 'connected') {
+      logger.error('Cannot send message: Not connected to SignalR');
+      setError('Not connected to chat service. Please wait or refresh the page.');
+      return;
+    }
+    
+    if (isTyping) {
+      logger.debug('Cannot send message: Already processing a message');
       return;
     }
     
@@ -349,44 +422,99 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
         timestamp: new Date()
       };
       
+      // Save the message content before clearing the input
+      const messageContent = inputValue;
+      
       // Add to UI immediately (optimistic update)
       setMessages(prev => [...prev, userMessage]);
-      setInputValue('');
+      setInputValue(''); // Clear input right away
       
       // Show typing indicator while waiting for response
       setIsTyping(true);
       
       // Get auth token
+      logger.debug('Getting auth token for sending message');
       const accessToken = await getAuthToken();
       
       // Send message via HTTP API
+      logger.debug(`Sending message to chat session ${chatSession.id}`);
       await chatService.sendChatMessage(
         chatSession.id,
-        userMessage.content,
+        messageContent, // Use saved content
         channelId, // Use channel ID as context
         accessToken
       );
       
-      logger.debug('Message sent via HTTP API', messageId);
+      logger.debug('Message sent successfully via HTTP API', messageId);
       
       // Note: We don't need to handle the bot response here
       // The bot's response will come through the SignalR connection
+      // The typing indicator will be cleared when the bot response comes through
       
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Error sending message:', error);
-      setError('Failed to send message. Please try again.');
+      
+      // Provide more specific error messages based on the error
+      if (error.message?.includes('Failed to fetch')) {
+        setError('Network error sending message. Please check your connection and try again.');
+      } else if (error.message?.includes('401')) {
+        setError('Authentication error sending message. Please refresh the page and try again.');
+      } else {
+        setError(`Failed to send message: ${error.message || 'Unknown error'}`);
+      }
+      
+      // Clear typing indicator if there was an error
       setIsTyping(false);
+      
+      // Clear error after 5 seconds
+      setTimeout(() => {
+        setError(null);
+      }, 5000);
     }
   };
 
   // Handle input enter key
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      logger.debug('Enter key pressed (without shift) - triggering message send');
       handleSendMessage();
     }
   };
 
+  // For debugging purposes - development only
+  const [forceEnableInput, setForceEnableInput] = useState(false);
+  
+  // Debug: Log state variables that affect input disabled state
+  useEffect(() => {
+    logger.debug('Chat component state:', {
+      connectionStatus,
+      loading,
+      loadingChat,
+      isTyping,
+      chatSessionExists: !!chatSession,
+      inputValueLength: inputValue.length,
+      forceEnableInput
+    });
+  }, [connectionStatus, loading, loadingChat, isTyping, chatSession, inputValue, forceEnableInput]);
+  
+  // Add a key handler to toggle force enable for testing (Ctrl+Alt+D)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && e.key === 'd') {
+        setForceEnableInput(prev => !prev);
+        logger.debug('Force enable input toggled:', !forceEnableInput);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [forceEnableInput]);
+  
   return (
     <SidebarLayout
       sidebar={
@@ -532,6 +660,9 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
                   </div>
                 </div>
               )}
+              
+              {/* Invisible element for scrolling to bottom */}
+              <div ref={messagesEndRef} />
             </>
           )}
         </div>
@@ -539,18 +670,19 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
         {/* Message Input */}
         <div className="flex flex-col">
           {/* Connection status message - now using the context's connectionStatus */}
-          {connectionStatus !== 'connected' && (
-            <div className={`mb-2 text-sm text-center ${
-              connectionStatus === 'connecting' || connectionStatus === 'reconnecting' 
+          <div className={`mb-2 text-sm text-center ${
+            connectionStatus === 'connected'
+              ? 'text-green-500'
+              : connectionStatus === 'connecting' || connectionStatus === 'reconnecting' 
                 ? 'text-yellow-500' 
                 : 'text-red-500'
-            }`}>
-              {connectionStatus === 'connecting' && 'Connecting to chat service...'}
-              {connectionStatus === 'reconnecting' && 'Reconnecting to chat service...'}
-              {connectionStatus === 'error' && 'Error connecting to chat service. Please refresh.'}
-              {connectionStatus === 'disconnected' && 'Disconnected from chat service. Please refresh.'}
-            </div>
-          )}
+          }`}>
+            Status: {connectionStatus} | 
+            {loading ? ' Loading: yes |' : ' Loading: no |'}
+            {loadingChat ? ' LoadingChat: yes |' : ' LoadingChat: no |'}
+            {isTyping ? ' Typing: yes |' : ' Typing: no |'}
+            {chatSession ? ' ChatSession: yes' : ' ChatSession: no'}
+          </div>
           
           {/* Error message */}
           {error && (
@@ -563,29 +695,69 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
             <textarea
               className="flex-1 p-3 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700 dark:text-white"
               placeholder={
-                connectionStatus !== 'connected' 
+                connectionStatus !== 'connected' && !forceEnableInput
                   ? 'Connecting to chat service...' 
                   : 'Ask a question about this channel...'
               }
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onChange={(e) => {
+                logger.debug('Input onChange triggered', { 
+                  newValue: e.target.value,
+                  disabled: !forceEnableInput && (connectionStatus !== 'connected' || loading || loadingChat || isTyping)
+                });
+                setInputValue(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                logger.debug('Input onKeyDown triggered', { key: e.key });
+                handleKeyDown(e);
+              }}
               rows={1}
               style={{ resize: 'none' }}
-              disabled={connectionStatus !== 'connected' || loading || loadingChat || isTyping}
+              disabled={!forceEnableInput && (connectionStatus !== 'connected' || loading || loadingChat || isTyping)}
             />
             <Button 
               color="blue" 
               className="rounded-l-none"
-              onClick={handleSendMessage}
+              onClick={(e: any) => {
+                e.preventDefault();
+                logger.debug('Send button clicked', {
+                  inputValue,
+                  forceEnabled: forceEnableInput,
+                  disabled: !forceEnableInput && (
+                    !inputValue.trim() || 
+                    connectionStatus !== 'connected' || 
+                    loading || 
+                    loadingChat || 
+                    isTyping ||
+                    !chatSession
+                  )
+                });
+                
+                // Either forced enabled or all conditions met
+                if (forceEnableInput || (
+                    inputValue.trim() && 
+                    connectionStatus === 'connected' && 
+                    !loading && 
+                    !loadingChat && 
+                    !isTyping && 
+                    chatSession
+                  )) {
+                  handleSendMessage();
+                } else {
+                  logger.debug('Send button clicked but conditions not met to send message');
+                }
+              }}
               disabled={
-                !inputValue.trim() || 
-                connectionStatus !== 'connected' || 
-                loading || 
-                loadingChat || 
-                isTyping ||
-                !chatSession
+                !forceEnableInput && (
+                  !inputValue.trim() || 
+                  connectionStatus !== 'connected' || 
+                  loading || 
+                  loadingChat || 
+                  isTyping ||
+                  !chatSession
+                )
               }
+              aria-label="Send message"
             >
               {isTyping ? (
                 <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin"></div>

@@ -30,6 +30,7 @@ export interface ChatMessageRequest {
   input: string;
   contextId?: string;
   variables?: { key: string, value: string }[];
+  messageType?: string;
 }
 
 /**

@@ -192,11 +192,11 @@ export const SignalRProvider: React.FC<SignalRProviderProps> = ({
     try {
       if (connection && connection.state === HubConnectionState.Connected) {
         logger.debug('Sending connection ping to prevent timeout');
-        // Use a no-op method that doesn't need to exist on the server
-        // This is just to reset the server timeout
-        connection.invoke('KeepAlive').catch(() => {
-          // Ignore failures - the server doesn't need to implement this method
-          // It just needs to receive a message to reset the timeout
+        // Instead of invoking a method, send a ping using the internal ping mechanism
+        // This will reset the server timeout without needing a custom method
+        connection.send('ping').catch(() => {
+          // Ignore failures - this is just a keepalive
+          logger.debug('Ping failed, but will be handled by automatic reconnection if needed');
         });
       }
     } catch (error) {
