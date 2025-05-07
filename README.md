@@ -135,7 +135,7 @@ The YouTube RAG Widget is a service that:
 - [x] Create user dashboard
 - [x] Implement YouTube API integration for channel/video metadata
 - [ ] Setup messaging queue for processing video
-- [ ] Set up vector database (Pinecone/Qdrant)
+- [x] Set up vector database (Qdrant)
 - [ ] Set up payment processing
 - [ ] Set up cost tracking
 
@@ -218,7 +218,28 @@ cp .env.example .env
 
 # Run development server
 npm run dev
+
+# Start the full stack with Docker Compose
+docker-compose up -d
 ```
+
+### Services
+
+The project includes the following services:
+
+1. **Frontend** - Landing page and user interface
+2. **API Service** - Main backend service handling API requests
+3. **PostgreSQL** - Relational database for structured data
+4. **Qdrant** - Vector database for embeddings and similarity search
+5. **Chat Copilot WebAPI** - Semantic Kernel service for AI processing
+
+### Accessing Services
+
+- Frontend: http://localhost:3003
+- API Service: http://localhost:3001
+- PostgreSQL: localhost:5432
+- Qdrant: http://localhost:6333 (REST API) and http://localhost:6333/dashboard (UI)
+- Chat Copilot WebAPI: http://localhost:3080
 
 ### Production Deployment
 
@@ -226,9 +247,14 @@ npm run dev
 # Build frontend assets
 npm run build
 
-# Start server
-npm start
+# Deploy with Docker Compose
+docker-compose -f docker-compose.prod.yml up -d
+
+# For Kubernetes deployment
+kubectl apply -f kubernetes/
 ```
+
+See [docs/QdrantUsage.md](docs/QdrantUsage.md) for information on using the Qdrant vector database.
 
 ## Future Enhancements (Post-MVP)
 
