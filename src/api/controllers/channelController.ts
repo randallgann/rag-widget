@@ -192,13 +192,24 @@ export const createChannel = async (req: Request, res: Response) => {
     const channel = await channelService.createChannelWithMetadata(
       channelDetails,
       userId,
-      apiKey
+      apiKey,
     );
     
+    // Include kernel status in the response
     return res.status(201).json({
       status: 'success',
       data: {
-        channel
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          description: channel.description,
+          status: channel.status,
+          kernelStatus: channel.kernelStatus,
+          qdrantCollectionStatus: channel.qdrantCollectionStatus,
+          config: channel.config,
+          createdAt: channel.createdAt,
+          updatedAt: channel.updatedAt
+        }
       },
       message: 'Channel created successfully with video metadata'
     });
@@ -240,6 +251,25 @@ export const getChannelById = async (req: Request, res: Response, next: NextFunc
         id,
         userId: user.id // Ensure the channel belongs to the user
       },
+      attributes: [
+        'id', 
+        'name', 
+        'description', 
+        'userId', 
+        'config', 
+        'status',
+        'kernelStatus',
+        'kernelError',
+        'kernelCreatedAt',
+        'kernelLastUpdated',
+        'qdrantCollectionStatus',
+        'qdrantCollectionError',
+        'qdrantCollectionCreatedAt',
+        'qdrantCollectionLastUpdated',
+        'retryCount',
+        'createdAt',
+        'updatedAt'
+      ],
       include: [
         {
           model: Video,
@@ -304,4 +334,136 @@ export const deleteChannel = (req: Request, res: Response) => {
     status: 'success',
     message: 'Delete channel to be implemented'
   });
+};
+
+/**
+ * Get channel status including kernel status
+ * @route GET /api/channels/:id/status
+ */
+export const getChannelStatus = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || !req.user.userId) {
+      throw new AppError('Unauthorized', 401);
+    }
+    
+    const { id } = req.params;
+    
+    if (!id) {
+      throw new AppError('Channel ID is required', 400);
+    }
+    
+    // Get user from our database
+    const user = await userService.getUserByAuth0Id(req.user.userId);
+    
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+    
+    // Get channel with kernel status fields
+    const channel = await Channel.findOne({
+      where: { 
+        id,
+        userId: user.id // Ensure the channel belongs to the user
+      },
+      attributes: [
+        'id',
+        'name',
+        'kernelStatus',
+        'kernelError',
+        'kernelCreatedAt',
+        'kernelLastUpdated',
+        'qdrantCollectionStatus',
+        'qdrantCollectionError',
+        'qdrantCollectionCreatedAt',
+        'qdrantCollectionLastUpdated',
+        'retryCount',
+        'updatedAt'
+      ]
+    });
+    
+    if (!channel) {
+      throw new AppError('Channel not found', 404);
+    }
+    
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        channel
+      }
+    });
+  } catch (error) {
+    logger.error('Get channel status error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Retry kernel creation for a channel
+ * @route POST /api/channels/:id/kernel/retry
+ */
+export const retryKernelCreation = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || !req.user.userId) {
+      throw new AppError('Unauthorized', 401);
+    }
+    
+    const { id } = req.params;
+    
+    if (!id) {
+      throw new AppError('Channel ID is required', 400);
+    }
+    
+    // Get user from our database
+    const user = await userService.getUserByAuth0Id(req.user.userId);
+    
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+    
+    // Get channel
+    const channel = await Channel.findOne({
+      where: { 
+        id,
+        userId: user.id // Ensure the channel belongs to the user
+      }
+    });
+    
+    if (!channel) {
+      throw new AppError('Channel not found', 404);
+    }
+    
+    if (channel.kernelStatus !== 'failed') {
+      throw new AppError('Kernel is not in failed status', 400);
+    }
+    
+    // Reset status to pending
+    await channel.update({
+      kernelStatus: 'pending',
+      kernelLastUpdated: new Date()
+    });
+    
+    // Import dynamically to avoid circular dependencies
+    const { kernelService } = await import('../../services/kernel');
+    
+    // Use empty string for auth token in development
+    // This matches how chatService is configured
+    const authToken = '';
+    
+    // Trigger background retry
+    kernelService.createKernel(channel, authToken).catch(error => {
+      logger.error(`Error in manual kernel retry for channel ${channel.id}:`, error);
+    });
+    
+    return res.status(202).json({
+      status: 'success',
+      data: {
+        id: channel.id,
+        kernelStatus: 'pending'
+      },
+      message: 'Kernel creation retry initiated'
+    });
+  } catch (error) {
+    logger.error('Retry kernel creation error:', error);
+    next(error);
+  }
 };

@@ -53,7 +53,7 @@ function formatSubscriberCount(subscriberCount: string): string {
 interface ChannelOnboardingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  authenticatedFetch?: (url: string, options?: RequestInit) => Promise<Response>;
+  authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response>;
   onChannelCreated?: (newChannel: any) => void;
 }
 
@@ -96,6 +96,35 @@ const ChannelOnboardingModal: React.FC<ChannelOnboardingModalProps> = ({
     { id: '1', name: 'My Tech Channel', videoCount: 42, subscriberCount: '5.2K', imageUrl: '/api/placeholder/48/48' },
     { id: '2', name: 'Cooking with Code', videoCount: 28, subscriberCount: '3.1K', imageUrl: '/api/placeholder/48/48' }
   ];
+
+  const logger = {
+    debug: (message: string, data?: any) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[CHANNELS DEBUG] ${message}`, data || '');
+      }
+    },
+    error: (message: string, data?: any) => {
+      console.error(`[CHANNELS ERROR] ${message}`, data || '');
+    }
+  };
+
+  // Get an authentication token for the chat-copilot webapi
+  const getAuthToken = async (): Promise<string> => {
+    try {
+      const tokenResponse = await authenticatedFetch('/api/auth/token');
+      const tokenData = await tokenResponse.json();
+      const accessToken = tokenData.accessToken;
+      
+      if (!accessToken) {
+        throw new Error('Failed to get access token');
+      }
+      
+      return accessToken;
+    } catch (error) {
+      logger.error('Error getting auth token:', error);
+      throw error;
+    }
+  };
   
   const resetFlow = () => {
     setCurrentStep(STEPS.CHANNEL_TYPE);
@@ -215,17 +244,23 @@ const ChannelOnboardingModal: React.FC<ChannelOnboardingModalProps> = ({
         progress: 10,
         processedVideos: 0
       }));
+
+      // Get authentication token
+      const accessToken = await getAuthToken();
+      logger.debug('Authentication token obtained');
       
       // Create the channel and retrieve video metadata
-      const response = await authenticatedFetch('/api/channels', {
+      const response = await fetch('/api/channels', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
           channelDetails: selectedChannel,
           // Use the current user's ID from the authenticated request
           // The authenticatedFetch should automatically include the user's auth token
+          hasAuthenticatedFetch: true
         })
       });
       
@@ -864,8 +899,10 @@ const AddChannelButton = () => {
       
       <ChannelOnboardingModal 
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
+        onClose={() => setIsModalOpen(false)} 
+        authenticatedFetch={function (url: string, options?: RequestInit): Promise<Response> {
+          throw new Error('Function not implemented.');
+        } }      />
     </div>
   );
 };

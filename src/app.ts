@@ -13,6 +13,7 @@ import sequelize from './config/db';
 import fs from 'fs';
 import { videoProcStatusSubscriber } from './services/processing/videoProcStatusSubscriber';
 import { setupWebSocketServer } from './api/controllers/statusController';
+import { kernelStatusMonitor } from './services/kernel/kernelStatusMonitor';
 
 // Initialize GCP environment for authentication
 try {
@@ -62,6 +63,7 @@ import widgetRoutes from './api/routes/widgetRoutes';
 import queryRoutes from './api/routes/queryRoutes';
 import videoRoutes from './api/routes/videoRoutes';
 import proxyRoutes from './api/routes/proxyRoutes';
+import webhookRoutes from './api/routes/webhookRoutes';
 
 const app: Application = express();
 // Always use port 3001 unless explicitly set via PORT env variable
@@ -115,6 +117,7 @@ app.use('/api/widgets', widgetRoutes);
 app.use('/api/query', queryRoutes);
 app.use('/api/videos', videoRoutes);
 app.use('/api/proxy', proxyRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // SPA fallback routes
 // This sends the index.html for any route except API and static files,
@@ -170,6 +173,15 @@ if (process.env.NODE_ENV !== 'test') {
         logger.error('Failed to start video processing status subscriber:', error);
         // Continue application execution even if subscriber fails
       }
+      
+      // Start kernel status monitor
+      try {
+        kernelStatusMonitor.start();
+        logger.info('Kernel status monitor started');
+      } catch (error) {
+        logger.error('Failed to start kernel status monitor:', error);
+        // Continue application execution even if monitor fails
+      }
     })
     .catch(err => {
       // Log the error but continue in development mode
@@ -188,5 +200,42 @@ if (process.env.NODE_ENV !== 'test') {
       }
     });
 }
+
+// Add cleanup handlers for graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM signal received. Shutting down gracefully...');
+  
+  // Stop kernel status monitor
+  kernelStatusMonitor.stop();
+  
+  // Stop video processing status subscriber
+  if (videoProcStatusSubscriber && typeof videoProcStatusSubscriber.stop === 'function') {
+    videoProcStatusSubscriber.stop();
+  }
+  
+  // Close server and exit
+  server.close(() => {
+    logger.info('Server closed. Exiting process.');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT signal received. Shutting down gracefully...');
+  
+  // Stop kernel status monitor
+  kernelStatusMonitor.stop();
+  
+  // Stop video processing status subscriber
+  if (videoProcStatusSubscriber && typeof videoProcStatusSubscriber.stop === 'function') {
+    videoProcStatusSubscriber.stop();
+  }
+  
+  // Close server and exit
+  server.close(() => {
+    logger.info('Server closed. Exiting process.');
+    process.exit(0);
+  });
+});
 
 export default app;
