@@ -4,7 +4,7 @@ import { kernelService } from './kernelService';
 import { Op } from 'sequelize';
 
 class KernelStatusMonitor {
-  private readonly checkInterval: number = 60000; // 1 minute
+  private readonly checkInterval: number = 5000; // 1 minute
   private timer: NodeJS.Timeout | null = null;
   
   /**

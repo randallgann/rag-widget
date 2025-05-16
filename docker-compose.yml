@@ -43,6 +43,7 @@ services:
       - GCP_SERVICE_ACCOUNT_KEY_SECRET=${GCP_SERVICE_ACCOUNT_KEY_SECRET}
       # Set explicit path to credentials in the container
       - GOOGLE_APPLICATION_CREDENTIALS=/app/rag-widget-1b0f63fa8b77.json
+      - KERNEL_API_URL=http://chat-copilot-webapi:8080
     depends_on:
       postgres:
         condition: service_healthy
