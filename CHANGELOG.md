@@ -10,6 +10,16 @@ Each entry should include:
 
 ## Changes
 
+### 2025-05-16 (Chat Header Enhancement for Kernel Integration)
+- **Enhanced Chat Service with User Headers**:
+  - Added X-User-Id and X-User-Name headers to all chat service requests
+  - Modified sendChatMessage to include user identification information
+  - Updated getOrCreateChatSession and related methods to pass user context
+  - Enhanced getChatSessionsByChannel and getChatMessages with user headers
+  - Improved debug logging for user identification in chat requests
+  - Ensures proper kernel and Qdrant collection routing in the backend webapi
+  - Added compatibility with backend user identification requirements
+
 ### 2025-05-15 (Channel-Kernel Integration Documentation Update)
 - **Updated Kernel Creation Documentation**:
   - Clarified the actual implementation approach in ChannelKernelIntegration.md

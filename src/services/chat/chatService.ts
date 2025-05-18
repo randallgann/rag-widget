@@ -30,9 +30,16 @@ class ChatService {
    * Create a new chat session for a channel
    * @param channelId The ID of the channel to create a chat session for
    * @param authToken Authentication token for the API
+   * @param userId The ID of the user creating the session
+   * @param userName The name of the user creating the session
    * @returns The created chat session
    */
-  async createChatSession(channelId: string, authToken: string): Promise<ChatSession> {
+  async createChatSession(
+    channelId: string, 
+    authToken: string, 
+    userId?: string, 
+    userName?: string
+  ): Promise<ChatSession> {
     const url = `${this.apiBaseUrl}/chats`;
     console.debug(`Creating chat session for channel ${channelId} at: ${url}`);
     
@@ -44,13 +51,31 @@ class ChatService {
     console.debug('Request payload:', payload);
     
     try {
+      // Build headers object
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
+      // Add Authorization header if token is provided
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
+      // Add user identification headers if provided
+      if (userId) {
+        headers['X-User-Id'] = userId;
+        console.debug(`Including X-User-Id header: ${userId}`);
+      }
+      
+      if (userName) {
+        headers['X-User-Name'] = userName;
+        console.debug(`Including X-User-Name header: ${userName}`);
+      }
+      
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'Accept': 'application/json'
-        },
+        headers,
         body: JSON.stringify(payload)
       });
       
@@ -86,20 +111,47 @@ class ChatService {
    * @param authToken Authentication token for the API
    * @param skip Number of sessions to skip (default: 0)
    * @param count Maximum number of sessions to return (default: -1 for all sessions)
+   * @param userId The ID of the user retrieving the sessions
+   * @param userName The name of the user retrieving the sessions
    * @returns Array of chat sessions for the channel
    */
-  async getChatSessionsByChannel(channelId: string, authToken: string, skip: number = 0, count: number = -1): Promise<ChatSession[]> {
+  async getChatSessionsByChannel(
+    channelId: string, 
+    authToken: string, 
+    skip: number = 0, 
+    count: number = -1,
+    userId?: string,
+    userName?: string
+  ): Promise<ChatSession[]> {
     const url = `${this.apiBaseUrl}/chats/context/${channelId}?skip=${skip}&count=${count}`;
     console.debug(`Fetching chat sessions from: ${url}`);
     
     try {
+      // Build headers object
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
+      // Add Authorization header if token is provided
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
+      // Add user identification headers if provided
+      if (userId) {
+        headers['X-User-Id'] = userId;
+        console.debug(`Including X-User-Id header: ${userId}`);
+      }
+      
+      if (userName) {
+        headers['X-User-Name'] = userName;
+        console.debug(`Including X-User-Name header: ${userName}`);
+      }
+      
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
+        headers
       });
       
       console.debug(`Chat sessions response status: ${response.status} ${response.statusText}`);
@@ -128,21 +180,48 @@ class ChatService {
    * @param authToken Authentication token for the API
    * @param skip Number of messages to skip (default: 0)
    * @param count Maximum number of messages to return (default: -1 for all messages)
+   * @param userId The ID of the user retrieving the messages
+   * @param userName The name of the user retrieving the messages
    * @returns Array of messages in the chat session
    */
-  async getChatMessages(chatId: string, authToken: string, skip: number = 0, count: number = -1): Promise<ChatMessage[]> {
+  async getChatMessages(
+    chatId: string, 
+    authToken: string, 
+    skip: number = 0, 
+    count: number = -1,
+    userId?: string,
+    userName?: string
+  ): Promise<ChatMessage[]> {
     logger.debug(`Inside getChatMessages() for chatId: ${chatId}`);
     const url = `${this.apiBaseUrl}/chats/${chatId}/messages?skip=${skip}&count=${count}`;
     console.debug(`Fetching chat messages from: ${url}`);
     
     try {
+      // Build headers object
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
+      // Add Authorization header if token is provided
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
+      // Add user identification headers if provided
+      if (userId) {
+        headers['X-User-Id'] = userId;
+        console.debug(`Including X-User-Id header: ${userId}`);
+      }
+      
+      if (userName) {
+        headers['X-User-Name'] = userName;
+        console.debug(`Including X-User-Name header: ${userName}`);
+      }
+      
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
+        headers
       });
       
       console.debug(`Chat messages response status: ${response.status} ${response.statusText}`);
@@ -171,25 +250,62 @@ class ChatService {
    * @param message The message content to send
    * @param channelId The channel ID to use as context
    * @param authToken Authentication token for the API
+   * @param messageType The type of message being sent (defaults to "message")
+   * @param userId The ID of the user sending the message
+   * @param userName The name of the user sending the message
    * @returns The result of sending the message
    */
-  async sendChatMessage(chatId: string, message: string, channelId: string, authToken: string): Promise<any> {
+  async sendChatMessage(
+    chatId: string, 
+    message: string, 
+    channelId: string, 
+    authToken: string, 
+    messageType: string = "message",
+    userId?: string,
+    userName?: string
+  ): Promise<any> {
     const url = `${this.apiBaseUrl}/chats/${chatId}/messages`;
     console.debug(`Sending message to chat session ${chatId} at: ${url}`);
     
     const payload = {
       input: message,
-      contextId: channelId // Use channel ID as context ID
+      contextId: channelId, // Use channel ID as context ID
+      variables: [
+        {
+          key: "messageType",
+          value: messageType
+        }
+      ]
     };
     
+    console.debug('Request payload:', payload);
+    
     try {
+      // Build headers object
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
+      // Add Authorization header if token is provided
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
+      // Add user identification headers if provided
+      if (userId) {
+        headers['X-User-Id'] = userId;
+        console.debug(`Including X-User-Id header: ${userId}`);
+      }
+      
+      if (userName) {
+        headers['X-User-Name'] = userName;
+        console.debug(`Including X-User-Name header: ${userName}`);
+      }
+      
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'Accept': 'application/json'
-        },
+        headers,
         body: JSON.stringify(payload)
       });
       
@@ -217,9 +333,16 @@ class ChatService {
    * 
    * @param channelId The ID of the channel to get/create a chat session for
    * @param authToken Authentication token for the API
+   * @param userId The ID of the user creating/accessing the session
+   * @param userName The name of the user creating/accessing the session
    * @returns The chat session to use
    */
-  async getOrCreateChatSession(channelId: string, authToken: string): Promise<ChatSession> {
+  async getOrCreateChatSession(
+    channelId: string, 
+    authToken: string, 
+    userId?: string, 
+    userName?: string
+  ): Promise<ChatSession> {
     logger.debug(`Getting or creating chat session for channel: ${channelId}`);
     
     // Validate channelId
@@ -229,9 +352,16 @@ class ChatService {
       throw error;
     }
     
+    // Log user identification information
+    if (userId) {
+      logger.debug(`User identification for chat session - ID: ${userId}, Name: ${userName || 'Not provided'}`);
+    } else {
+      logger.debug('No user identification provided for chat session');
+    }
+    
     try {
       // Try to get existing chat sessions for the channel
-      const sessions = await this.getChatSessionsByChannel(channelId, authToken, 0, -1);
+      const sessions = await this.getChatSessionsByChannel(channelId, authToken, 0, -1, userId, userName);
       console.debug(`Found ${sessions?.length || 0} existing sessions for channel ${channelId}`);
       
       // If there are existing sessions, return the most recent one
@@ -260,7 +390,7 @@ class ChatService {
     
     // Create a new chat session if none exists or if we couldn't retrieve them
     try {
-      const newSession = await this.createChatSession(channelId, authToken);
+      const newSession = await this.createChatSession(channelId, authToken, userId, userName);
       
       // Validate the new session
       if (!newSession || !newSession.id) {

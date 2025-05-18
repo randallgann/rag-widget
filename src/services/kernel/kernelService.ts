@@ -20,6 +20,7 @@ type AuthenticatedFetch = (url: string, options?: RequestInit) => Promise<Respon
 // Define interfaces for request/response types
 interface KernelCreateRequest {
   contextId: string;
+  userId?: string; // Add userId field
   completionOptions?: {
     modelId?: string;
     temperature?: number;
@@ -152,12 +153,15 @@ class KernelService {
     // Prepare request payload
     const payload: KernelCreateRequest = {
       contextId: channel.id,
+      userId: channel.userId, // Include the channel's userId
       completionOptions: {
         modelId: config.kernelApi?.defaultModel || 'gpt-4',
         temperature: 0.7,
       },
       enabledPlugins: ['YouTubePlugin']
     };
+    
+    logger.debug(`Creating kernel with userId ${channel.userId} and contextId ${channel.id}`);
     
     try {
       // Get auth token if not provided
@@ -166,7 +170,10 @@ class KernelService {
       // Prepare headers with Authorization
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        // Add custom headers for user identification when using pass-through authentication
+        'X-User-Id': channel.userId, // Use the channel's userId
+        'X-User-Name': 'Channel User' // Default name
       };
       
       // Only add Authorization header if token is not empty
@@ -174,6 +181,7 @@ class KernelService {
         headers['Authorization'] = `Bearer ${token}`;
       } else {
         logger.debug('Making request without Authorization header - empty token');
+        logger.debug(`Using X-User-Id header: ${channel.userId}`);
       }
       
       const response = await fetch(url, {
@@ -224,12 +232,22 @@ class KernelService {
     logger.debug(`Fetching kernel info for channel ${channelId} at: ${url}`);
     
     try {
+      // Look up the channel to get its userId
+      const channel = await Channel.findByPk(channelId);
+      if (!channel) {
+        logger.error(`Channel not found: ${channelId}`);
+        return null;
+      }
+      
       // Get auth token if not provided
       const token = authToken || await this.getAuthToken();
       
       // Prepare headers with Authorization
       const headers: Record<string, string> = {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        // Add custom headers for user identification when using pass-through authentication
+        'X-User-Id': channel.userId, // Use the actual channel's userId
+        'X-User-Name': 'Channel User'
       };
       
       // Only add Authorization header if token is not empty
@@ -237,6 +255,7 @@ class KernelService {
         headers['Authorization'] = `Bearer ${token}`;
       } else {
         logger.debug('Making request without Authorization header - empty token');
+        logger.debug(`Using X-User-Id header: ${channel.userId}`);
       }
       
       const response = await fetch(url, {
@@ -272,12 +291,22 @@ class KernelService {
     logger.debug(`Releasing kernel for channel ${channelId} at: ${url}`);
     
     try {
+      // Look up the channel to get its userId
+      const channel = await Channel.findByPk(channelId);
+      if (!channel) {
+        logger.error(`Channel not found: ${channelId}`);
+        return false;
+      }
+      
       // Get auth token if not provided
       const token = authToken || await this.getAuthToken();
       
       // Prepare headers with Authorization
       const headers: Record<string, string> = {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        // Add custom headers for user identification when using pass-through authentication
+        'X-User-Id': channel.userId, // Use the actual channel's userId
+        'X-User-Name': 'Channel User'
       };
       
       // Only add Authorization header if token is not empty
@@ -285,6 +314,7 @@ class KernelService {
         headers['Authorization'] = `Bearer ${token}`;
       } else {
         logger.debug('Making request without Authorization header - empty token');
+        logger.debug(`Using X-User-Id header: ${channel.userId}`);
       }
       
       const response = await fetch(url, {

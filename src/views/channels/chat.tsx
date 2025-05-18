@@ -152,13 +152,30 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       
       // Get or create chat session for this channel
       logger.debug(`Getting or creating chat session for channel ${channelId}`);
-      const session = await chatService.getOrCreateChatSession(channelId, accessToken);
+      logger.debug('User information for chat session:', {
+        userId: user?.id,
+        userName: user?.name,
+        hasUser: !!user
+      });
+      const session = await chatService.getOrCreateChatSession(
+        channelId, 
+        accessToken,
+        user?.id, // Pass user ID if available
+        user?.name // Pass user name if available
+      );
       setChatSession(session);
       logger.debug('Chat session initialized:', session);
       
       // Load chat messages with pagination parameters
       logger.debug(`Loading messages for chat session ${session.id}`);
-      const chatMessages = await chatService.getChatMessages(session.id, accessToken, 0, -1);
+      const chatMessages = await chatService.getChatMessages(
+        session.id, 
+        accessToken, 
+        0, 
+        -1,
+        user?.id, // Pass user ID if available
+        user?.name // Pass user name if available
+      );
       logger.debug(`Loaded ${chatMessages?.length || 0} messages`);
       
       // Convert API messages to our local format if any exist
@@ -438,11 +455,22 @@ const ChannelChat: React.FC<ChannelChatProps> = ({ authenticatedFetch, user: ini
       
       // Send message via HTTP API
       logger.debug(`Sending message to chat session ${chatSession.id}`);
+      
+      // Log user information for debugging
+      logger.debug('User information for chat message:', {
+        userId: user?.id,
+        userName: user?.name,
+        hasUser: !!user
+      });
+      
       await chatService.sendChatMessage(
         chatSession.id,
         messageContent, // Use saved content
         channelId, // Use channel ID as context
-        accessToken
+        accessToken,
+        'message', // Default message type
+        user?.id, // Pass user ID if available
+        user?.name // Pass user name if available
       );
       
       logger.debug('Message sent successfully via HTTP API', messageId);
