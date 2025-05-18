@@ -28,6 +28,10 @@ interface Config {
       audience: string;
       callbackUrl: string;
     };
+    serviceAccount?: {
+      userId: string;
+      refreshToken?: string;
+    };
   };
   youtube: {
     apiKey: string;
@@ -40,6 +44,13 @@ interface Config {
     apiKey: string;
     environment?: string;
     url?: string;
+  };
+  kernelApi?: {
+    baseUrl: string;
+    defaultModel: string;
+    authType: string;
+    apiKey?: string;
+    required?: boolean;
   };
   gcp: {
     projectId: string;
@@ -84,6 +95,10 @@ export const config: Config = {
       audience: process.env.AUTH0_AUDIENCE || '',
       callbackUrl: process.env.AUTH0_CALLBACK_URL || 'http://localhost:3001/api/auth/callback',
     },
+    serviceAccount: {
+      userId: process.env.SERVICE_ACCOUNT_USER_ID || 'service-account',
+      refreshToken: process.env.SERVICE_ACCOUNT_REFRESH_TOKEN
+    },
   },
   youtube: {
     apiKey: process.env.YOUTUBE_API_KEY || '',
@@ -96,6 +111,13 @@ export const config: Config = {
     apiKey: process.env.VECTOR_DB_API_KEY || '',
     environment: process.env.VECTOR_DB_ENVIRONMENT,
     url: process.env.VECTOR_DB_URL,
+  },
+  kernelApi: {
+    baseUrl: process.env.KERNEL_API_URL || 'http://localhost:3080',
+    defaultModel: process.env.KERNEL_DEFAULT_MODEL || 'gpt-4',
+    authType: process.env.KERNEL_AUTH_TYPE || 'none',
+    apiKey: process.env.KERNEL_API_KEY,
+    required: process.env.KERNEL_API_REQUIRED === 'true',
   },
   gcp: {
     projectId: process.env.GCP_PROJECT_ID || 'rag-widget',

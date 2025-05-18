@@ -43,6 +43,7 @@ services:
       - GCP_SERVICE_ACCOUNT_KEY_SECRET=${GCP_SERVICE_ACCOUNT_KEY_SECRET}
       # Set explicit path to credentials in the container
       - GOOGLE_APPLICATION_CREDENTIALS=/app/rag-widget-1b0f63fa8b77.json
+      - KERNEL_API_URL=http://chat-copilot-webapi:8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,12 +87,23 @@ services:
       dockerfile: docker/webapi/Dockerfile
     ports:
       - "3080:8080"
+    volumes:
+      - ./rag-widget-1b0f63fa8b77.json:/app/secrets/gcp-sa-key.json
     env_file:
       - /home/rgann/chat-copilot/docker/webapi/.env
     environment:
       - Authentication__Type=None
       - ASPNETCORE_ENVIRONMENT=Development
-    # No dependencies on the qdrant or rabbitmq services since we're not including them
+      # Provide direct OpenAI API key as a fallback (from .env file)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Specify GCP project and secret path
+      - GCP__ProjectId=rag-widget
+      # Set path to secret explicitly (can help with versioning)
+      - GCP__SecretPath=projects/86689097650/secrets/OPENAI_API_KEY/versions/latest
+      # Connect to Qdrant service
+      - KernelMemory__Services__Qdrant__Endpoint=http://qdrant:6333
+    depends_on:
+      - qdrant
     
   # Qdrant Vector Database
   qdrant:

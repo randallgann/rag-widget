@@ -10,6 +10,37 @@ Each entry should include:
 
 ## Changes
 
+### 2025-05-16 (Chat Header Enhancement for Kernel Integration)
+- **Enhanced Chat Service with User Headers**:
+  - Added X-User-Id and X-User-Name headers to all chat service requests
+  - Modified sendChatMessage to include user identification information
+  - Updated getOrCreateChatSession and related methods to pass user context
+  - Enhanced getChatSessionsByChannel and getChatMessages with user headers
+  - Improved debug logging for user identification in chat requests
+  - Ensures proper kernel and Qdrant collection routing in the backend webapi
+  - Added compatibility with backend user identification requirements
+
+### 2025-05-15 (Channel-Kernel Integration Documentation Update)
+- **Updated Kernel Creation Documentation**:
+  - Clarified the actual implementation approach in ChannelKernelIntegration.md
+  - Documented that kernel creation is handled through KernelStatusMonitor background service
+  - Explained advantages of decoupled approach vs. direct integration in channelService.ts
+  - Highlighted the role of the monitor service in creating, checking, and retrying kernels
+
+### 2025-05-13 (Channel-Kernel Integration Implementation)
+- **Implemented Kernel Creation for YouTube Channels**:
+  - Added kernel tracking fields to Channel model with status, error, and timestamps
+  - Implemented KernelService for creating and managing kernels in chat-copilot-webapi
+  - Implemented KernelStatusMonitor to automatically create kernels for new channels
+  - Implemented retry logic with exponential backoff for failed kernel creation
+  - Created API endpoints for checking kernel status and retrying failed creations
+  - Enhanced database schema to track kernel and Qdrant collection status
+  - Fixed connection issues by explicitly using IPv4 addresses instead of localhost
+  - Added authentication handling for chat-copilot-webapi requests
+  - Enhanced channel controller to include kernel status in responses
+  - Implemented webhook endpoints for receiving external status updates
+  - Added graceful service shutdown with proper cleanup
+
 ### 2025-05-01 (SignalR Connection Management Refactoring)
 - **Implemented Centralized SignalR Connection Management**:
   - Created new SignalRContext provider to centralize connection management

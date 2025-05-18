@@ -6,7 +6,9 @@ import {
   createChannel,
   getChannelById,
   updateChannel,
-  deleteChannel
+  deleteChannel,
+  getChannelStatus,
+  retryKernelCreation
 } from '../controllers/channelController';
 import { processChannelVideos } from '../controllers/videoController';
 
@@ -68,5 +70,19 @@ router.post('/:id/process', validateAuth0Token, requireAuth, processChannelVideo
  * @note    This route will be implemented in a future phase
  */
 // Route placeholder for future implementation
+
+/**
+ * @route   GET /api/channels/:id/status
+ * @desc    Get kernel and collection status for a channel
+ * @access  Private
+ */
+router.get('/:id/status', validateAuth0Token, requireAuth, getChannelStatus);
+
+/**
+ * @route   POST /api/channels/:id/kernel/retry
+ * @desc    Retry kernel creation for a channel
+ * @access  Private
+ */
+router.post('/:id/kernel/retry', validateAuth0Token, requireAuth, retryKernelCreation);
 
 export default router;

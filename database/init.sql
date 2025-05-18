@@ -37,6 +37,15 @@ CREATE TABLE IF NOT EXISTS channels (
     user_id UUID NOT NULL REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE,
     config JSONB DEFAULT '{}',
     status status_enum DEFAULT 'active',
+    kernel_status VARCHAR(20) DEFAULT 'pending' CHECK (kernel_status IN ('pending', 'creating', 'created', 'failed')),
+    kernel_error TEXT,
+    kernel_created_at TIMESTAMP WITH TIME ZONE,
+    kernel_last_updated TIMESTAMP WITH TIME ZONE,
+    qdrant_collection_status VARCHAR(20) DEFAULT 'pending' CHECK (qdrant_collection_status IN ('pending', 'creating', 'created', 'failed')),
+    qdrant_collection_error TEXT,
+    qdrant_collection_created_at TIMESTAMP WITH TIME ZONE,
+    qdrant_collection_last_updated TIMESTAMP WITH TIME ZONE,
+    retry_count INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -116,6 +125,10 @@ CREATE INDEX IF NOT EXISTS idx_video_segments_transcript_trgm ON video_segments 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id_expires_at ON sessions(user_id, expires_at);
+
+-- Indexes for kernel-related fields
+CREATE INDEX IF NOT EXISTS idx_channels_kernel_status ON channels(kernel_status);
+CREATE INDEX IF NOT EXISTS idx_channels_qdrant_collection_status ON channels(qdrant_collection_status);
 
 -- Add sample data for testing (optional, can be removed for production)
 INSERT INTO users (auth0_id, email, name, role) 
