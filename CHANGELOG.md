@@ -10,6 +10,25 @@ Each entry should include:
 
 ## Changes
 
+### 2025-05-20 (TODO for Next Session: Frontend Config Context Implementation)
+- **Implementation Plan for Login URL Domain Fix**:
+  - Created detailed implementation plan for fixing the hardcoded login URL issue
+  - Documented approach to create a config API endpoint and frontend context
+  - Plan available in docs/API_SERVICE_URL_Fix_Implementation.md
+  - Will allow proper login redirection from Kubernetes ingress domain
+  - Next session: Implement this solution to fix authentication issues
+
+### 2025-05-20 (Minikube Deployment Enhancement)
+- **Fixed Minikube Deployment Issues**:
+  - Corrected line endings in setup scripts using dos2unix to ensure proper script execution
+  - Fixed Chat Copilot WebAPI pod crash by properly mounting GCP service account credentials
+  - Updated deployment process to follow correct ordering to ensure service dependencies
+  - Ensured proper service account key path mounting at `/app/secrets/gcp-sa-key.json`
+  - Successfully deployed all components (API service, PostgreSQL, Qdrant, frontend, Chat Copilot WebAPI)
+  - Updated documentation for smoother deployment process
+  - Fixed Chat Copilot WebAPI integration with GCP Secret Manager for API keys
+  - Enhanced understanding of component interdependencies in Kubernetes deployment
+
 ### 2025-05-16 (Chat Header Enhancement for Kernel Integration)
 - **Enhanced Chat Service with User Headers**:
   - Added X-User-Id and X-User-Name headers to all chat service requests

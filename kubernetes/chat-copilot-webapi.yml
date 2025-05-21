@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: chat-copilot-webapi
-        image: chat-copilot-webapi:latest  # Local image
+        image: chat-copilot-webapi:latest
         imagePullPolicy: Never
         ports:
         - containerPort: 8080
@@ -23,11 +23,21 @@ spec:
           value: "None"
         - name: ASPNETCORE_ENVIRONMENT
           value: "Development"
-        # Note: You'll need to create a Secret for any sensitive environment variables
-        # Below is just a placeholder - create a proper Secret for these values
-        envFrom:
-        - secretRef:
-            name: chat-copilot-secret  # This secret needs to be created
+        - name: GOOGLE_PROJECT_ID 
+          value: "rag-widget"
+        # Don't need to set GOOGLE_APPLICATION_CREDENTIALS as the app uses a default path
+        # Instead, mount the secret at the expected path
+        volumeMounts:
+        - name: gcp-key-volume
+          mountPath: "/app/secrets"
+          readOnly: true
+      volumes:
+      - name: gcp-key-volume
+        secret:
+          secretName: gcp-secrets
+          items:
+          - key: gcp-sa-key.json
+            path: gcp-sa-key.json
 ---
 apiVersion: v1
 kind: Service
@@ -39,4 +49,4 @@ spec:
   ports:
   - port: 3080
     targetPort: 8080
-  type: ClusterIP  # Using ClusterIP as we'll access it through the Ingress
+  type: ClusterIP

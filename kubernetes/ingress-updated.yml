@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rag-widget-ingress
+  annotations:
+    # Remove the rewrite-target that's causing path issues
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+    # Optional: if you want TLS/SSL
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+  - host: rag-widget.local  # Change to your domain or use minikube IP
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 3003
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 3001
+      - path: /chat
+        pathType: Prefix
+        backend:
+          service:
+            name: chat-copilot-webapi
+            port:
+              number: 3080
+  # Uncomment and configure if you want TLS
+  # tls:
+  # - hosts:
+  #   - rag-widget.local
+  #   secretName: rag-widget-tls-secret

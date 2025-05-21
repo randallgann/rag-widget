@@ -354,3 +354,15 @@ If the ingress controller fails to start:
 - Try a different Minikube version
 - Use `--driver=docker` explicitly when starting Minikube
 - As a last resort, skip ingress and use port forwarding instead
+
+### 10 Troubleshooting commands
+- `kubectl describe pod api-service`
+- `kubectl get secrets`
+- `kubectl get all`
+- `kubectl delete deployment -all`
+- `kubectl delete service --all --ignore-not-found=true`
+- `kubectl delete pod --all --force --grace-period=0`
+- `minikube delete`
+- `kubectl get services`
+- `kubectl get ingress`
+- `minikube ip`
