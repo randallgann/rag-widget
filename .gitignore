@@ -61,10 +61,8 @@ temp/
 .env.example
 scripts/set-auth0-env.sh
 scripts/set-local-env.sh
-kubernetes/gcp-secrets-with-key.yml
 kubernetes/api-keys-secret-applied.yml
 kubernetes/auth0-secrets-updated.yml
-kubernetes/gcp-secrets-with-key.yml
 kubernetes/chat-copilot-secret-updated.yml
 kubernetes/gcp-secrets.yml
 kubernetes/gcp-secrets-with-key.yml
