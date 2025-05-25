@@ -100,10 +100,10 @@ Modify the chat-copilot-secret.yml file with your actual secrets:
 
 ```bash
 # Edit the file with your secrets
-nano kubernetes/chat-copilot-secret.yml
+# nano kubernetes/chat-copilot-secret.yml
 
 # Apply the secret
-kubectl apply -f kubernetes/chat-copilot-secret.yml
+# kubectl apply -f kubernetes/chat-copilot-secret.yml
 ```
 
 ## 4. Building Docker Images for Minikube

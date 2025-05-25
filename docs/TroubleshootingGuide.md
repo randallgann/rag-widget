@@ -287,3 +287,39 @@ If authentication suddenly fails, it could be due to server-side session expirat
 - Check sessionStorage configuration in app.ts
 - Increase session lifetime if needed
 - Implement automatic re-authentication on session expiration
+
+## Kubernetes and Minikube Issues
+
+### WSL (Windows Subsystem for Linux) Networking Issues
+
+**Issue:** When running Minikube on WSL, you cannot access the application using the Minikube IP address directly. Attempts to curl or browse to the Minikube IP result in connection timeouts.
+
+**Root Cause:** WSL runs in a lightweight VM with its own network namespace, which creates network isolation between WSL and the Minikube VM. This prevents direct communication between WSL and Minikube's internal network.
+
+**Symptoms:**
+- `curl http://$(minikube ip)` times out
+- Cannot access services via Ingress using Minikube IP
+- Port forwarding works, but Ingress does not
+
+**Solution:** Use `minikube tunnel` to create a network route:
+
+1. Start the tunnel in a separate terminal (requires sudo):
+```bash
+sudo minikube tunnel
+```
+
+2. Keep the tunnel running while accessing the application
+
+3. Add hostname to /etc/hosts:
+```bash
+echo "127.0.0.1 rag-widget.local" | sudo tee -a /etc/hosts
+```
+
+4. Access the application at http://rag-widget.local
+
+**Alternative Solutions:**
+- Use `kubectl port-forward` for individual services
+- Run Minikube with a different driver that has better WSL support
+- Use Docker Desktop's built-in Kubernetes instead of Minikube
+
+**Note:** This is a known limitation of running Minikube on WSL and affects all Kubernetes services exposed via Ingress or NodePort.

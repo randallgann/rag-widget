@@ -10,6 +10,16 @@ Each entry should include:
 
 ## Changes
 
+### 2025-05-25 (Minikube WSL Authentication Redirect Issue)
+- **Issue Identified**: When accessing the application through Minikube ingress on WSL, clicking the login button redirects to http://localhost:3001/api/auth/login instead of using the ingress domain (rag-widget.local)
+- **Symptoms**:
+  - Frontend loads successfully at http://rag-widget.local
+  - Login button click results in 404 error at localhost:3001/api/auth/login
+  - The redirect bypasses the ingress routing and attempts to connect directly to the API service port
+- **Root Cause**: Frontend is hardcoded to use localhost:3001 for API calls instead of using relative paths or the current domain
+- **Impact**: Authentication flow is broken when running in Kubernetes with ingress
+- **Next Steps**: Analyze the frontend code to understand how API URLs are constructed and determine the best approach for making them environment-aware
+
 ### 2025-05-20 (TODO for Next Session: Frontend Config Context Implementation)
 - **Implementation Plan for Login URL Domain Fix**:
   - Created detailed implementation plan for fixing the hardcoded login URL issue

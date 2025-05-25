@@ -226,6 +226,24 @@ kubectl get services
 minikube service list
 ```
 
+### WSL (Windows Subsystem for Linux) Specific Issues
+
+**IMPORTANT**: If you're running Minikube on WSL, you cannot directly access services using the Minikube IP address due to WSL's network isolation. You MUST use `minikube tunnel`:
+
+1. Start the tunnel in a separate terminal (keep it running):
+```bash
+sudo minikube tunnel
+```
+
+2. Add the hostname to your hosts file:
+```bash
+echo "127.0.0.1 rag-widget.local" | sudo tee -a /etc/hosts
+```
+
+3. Access the application at http://rag-widget.local
+
+Without the tunnel, you will experience connection timeouts when trying to access the Minikube IP directly from WSL.
+
 ## Cleaning Up
 
 To stop the application and clean up resources:

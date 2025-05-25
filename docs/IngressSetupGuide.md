@@ -44,6 +44,24 @@ Then add an entry to your `/etc/hosts` file (requires sudo access):
 sudo sh -c "echo '$(minikube ip) rag-widget.local' >> /etc/hosts"
 ```
 
+### Special Instructions for WSL (Windows Subsystem for Linux)
+
+**IMPORTANT**: If you're running Minikube on WSL, direct access to the Minikube IP address will not work due to WSL's network isolation. You must use `minikube tunnel`:
+
+```bash
+# In a separate terminal, run (requires sudo):
+sudo minikube tunnel
+
+# Keep this running while accessing the application
+```
+
+Then add the following to your `/etc/hosts` file:
+```bash
+echo "127.0.0.1 rag-widget.local" | sudo tee -a /etc/hosts
+```
+
+Now you can access the application at http://rag-widget.local
+
 ## Accessing the Application
 
 Once the Ingress controller is set up, you can access the application at:
